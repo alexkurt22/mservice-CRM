@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:mservice_crm/services/fcm_service.dart';
 
 class OrderDetailsScreen extends StatefulWidget {
   final String orderId;
   final Map<String, dynamic> orderData;
 
   const OrderDetailsScreen({
-    Key? key,
+    super.key,
     required this.orderId,
     required this.orderData,
-  }) : super(key: key);
+  });
 
   @override
   State<OrderDetailsScreen> createState() => _OrderDetailsScreenState();
@@ -19,6 +20,57 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   final TextEditingController _commentController = TextEditingController();
   final TextEditingController _priceController = TextEditingController();
 
+  Future<void> _updateStatus(String newStatus, {String? adminComment, String? price}) async {
+    try {
+      final updateData = <String, dynamic>{
+        'status': newStatus,
+        'has_unread_update': true,
+      };
+
+      if (adminComment != null) updateData['admin_comment'] = adminComment;
+      if (price != null) updateData['price'] = price;
+
+      await FirebaseFirestore.instance
+          .collection('orders')
+          .doc(widget.orderId)
+          .update(updateData);
+
+      if (newStatus == 'awaiting_approval') {
+        final String? phone = widget.orderData['phone'];
+        if (phone != null) {
+          final clientDoc = await FirebaseFirestore.instance
+              .collection('clients')
+              .doc(phone)
+              .get();
+              
+          if (clientDoc.exists) {
+            final String? fcmToken = clientDoc.data()?['fcm_token'];
+            if (fcmToken != null) {
+              await FCMService.sendPushNotification(
+                token: fcmToken,
+                title: 'Заказ ожидает согласования',
+                body: 'Мы провели диагностику. Пожалуйста, проверьте цену и подтвердите ремонт.',
+              );
+            }
+          }
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Статус заказа успешно обновлен')),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка: $e')),
+        );
+      }
+    }
+  }
+
   @override
   void dispose() {
     _commentController.dispose();
@@ -26,97 +78,9 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     super.dispose();
   }
 
-  void _sendForApproval() async {
-    final comment = _commentController.text.trim();
-    final price = _priceController.text.trim();
-
-    if (comment.isEmpty || price.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Заполните все поля')),
-      );
-      return;
-    }
-
-    try {
-      await FirebaseFirestore.instance
-          .collection('orders')
-          .doc(widget.orderId)
-          .update({
-        'status': 'awaiting_approval',
-        'admin_comment': comment,
-        'price': price,
-        'has_unread_update': true,
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Заказ отправлен на согласование')),
-        );
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка: $e')),
-        );
-      }
-    }
-  }
-
-  void _cancelOrder() async {
-    try {
-      await FirebaseFirestore.instance
-          .collection('orders')
-          .doc(widget.orderId)
-          .update({
-        'status': 'canceled',
-        'has_unread_update': true,
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Заказ отозван')),
-        );
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка: $e')),
-        );
-      }
-    }
-  }
-
-  void _completeOrder() async {
-    try {
-      await FirebaseFirestore.instance
-          .collection('orders')
-          .doc(widget.orderId)
-          .update({
-        'status': 'completed',
-        'has_unread_update': true,
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Ремонт завершен')),
-        );
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка: $e')),
-        );
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final data = widget.orderData;
-    final status = data['status'] ?? 'new';
+    final status = widget.orderData['status'] ?? 'new';
 
     return Scaffold(
       appBar: AppBar(
@@ -125,7 +89,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Card(
               child: Padding(
@@ -133,16 +97,13 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Имя: ${data['client_name'] ?? 'Не указано'}',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
+                    Text('Имя: ${widget.orderData['client_name'] ?? 'Не указано'}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     const SizedBox(height: 8),
-                    Text('Телефон: ${data['phone'] ?? 'Не указан'}'),
+                    Text('Телефон: ${widget.orderData['phone'] ?? 'Не указано'}', style: const TextStyle(fontSize: 16)),
                     const SizedBox(height: 8),
-                    Text('Техника: ${data['device_type'] ?? 'Не указана'}'),
+                    Text('Техника: ${widget.orderData['device_type'] ?? 'Не указано'}', style: const TextStyle(fontSize: 16)),
                     const SizedBox(height: 8),
-                    Text('Проблема: ${data['problem'] ?? 'Не указана'}'),
+                    Text('Проблема: ${widget.orderData['problem'] ?? 'Не указано'}', style: const TextStyle(fontSize: 16)),
                   ],
                 ),
               ),
@@ -166,101 +127,57 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                 ),
                 keyboardType: TextInputType.number,
               ),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: _sendForApproval,
-                child: const Text('Отправить на согласование'),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    if (_commentController.text.isNotEmpty && _priceController.text.isNotEmpty) {
+                      _updateStatus(
+                        'awaiting_approval',
+                        adminComment: _commentController.text,
+                        price: _priceController.text,
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Заполните все поля')),
+                      );
+                    }
+                  },
+                  child: const Text('Отправить на согласование'),
+                ),
               ),
             ] else if (status == 'awaiting_approval') ...[
-              Card(
-                color: Colors.orange.shade100,
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      const Text(
-                        'Ожидаем ответа от клиента',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 16),
-                      ),
-                      const SizedBox(height: 8),
-                      Text('Диагноз: ${data['admin_comment'] ?? ''}'),
-                      Text('Стоимость: ${data['price'] ?? ''}'),
-                    ],
-                  ),
-                ),
-              ),
+              const Text('Ожидаем ответа от клиента', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.orange)),
+              const SizedBox(height: 16),
+              Text('Комментарий мастера: ${widget.orderData['admin_comment'] ?? ''}'),
+              const SizedBox(height: 8),
+              Text('Стоимость: ${widget.orderData['price'] ?? ''} руб.'),
               const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: _cancelOrder,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                  onPressed: () => _updateStatus('canceled'),
+                  child: const Text('Отозвать заказ', style: TextStyle(color: Colors.white)),
                 ),
-                child: const Text('Отозвать заказ'),
               ),
             ] else if (status == 'in_progress') ...[
-              Card(
-                color: Colors.green.shade100,
-                child: const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Text(
-                    'Клиент согласен. В работе!',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green,
-                      fontSize: 16,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
+              const Text('Клиент согласен. В работе!', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green)),
               const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: _completeOrder,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => _updateStatus('completed'),
+                  child: const Text('Завершить ремонт'),
                 ),
-                child: const Text('Завершить ремонт'),
               ),
             ] else if (status == 'completed') ...[
-              Card(
-                color: Colors.green.shade100,
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      const Text(
-                        'Ремонт успешно завершен',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text('Итоговая цена: ${data['price'] ?? ''}'),
-                    ],
-                  ),
-                ),
-              ),
+              const Text('Ремонт успешно завершен', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green)),
+              const SizedBox(height: 16),
+              Text('Итоговая стоимость: ${widget.orderData['price'] ?? ''} руб.', style: const TextStyle(fontSize: 16)),
             ] else if (status == 'canceled') ...[
-              Card(
-                color: Colors.red.shade100,
-                child: const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Text(
-                    'Заказ отменен',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red,
-                      fontSize: 16,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
+              const Text('Заказ отменен', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red)),
             ],
           ],
         ),
