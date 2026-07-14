@@ -1,9 +1,8 @@
 import 'dart:convert';
 import 'package:googleapis_auth/auth_io.dart';
-import 'package:http/http.dart' as http;
 
 class FCMService {
-  static const Map<String, dynamic> _serviceAccountJson = {
+  static const Map<String, dynamic> _serviceAccount = {
     "type": "service_account",
     "project_id": "mserviceapp-79557",
     "private_key_id": "3c1716f8479af69c540a472925976466956e2e6a",
@@ -23,33 +22,34 @@ class FCMService {
     required String body,
   }) async {
     try {
-      final accountCredentials = ServiceAccountCredentials.fromJson(_serviceAccountJson);
-      final scopes = ['https://www.googleapis.com/auth/firebase.messaging'];
-      
-      final authClient = await clientViaServiceAccount(accountCredentials, scopes);
-      
-      final String projectId = _serviceAccountJson['project_id'];
-      final String endpoint = 'https://fcm.googleapis.com/v1/projects/$projectId/messages:send';
-      
-      final Map<String, dynamic> message = {
+      final credentials = ServiceAccountCredentials.fromJson(_serviceAccount);
+      final client = await clientViaServiceAccount(
+        credentials,
+        ['https://www.googleapis.com/auth/firebase.messaging'],
+      );
+
+      final url = Uri.parse('https://fcm.googleapis.com/v1/projects/mserviceapp-79557/messages:send');
+
+      // Вот этот блок 'message' обязателен для новой версии API!
+      final payload = {
         'message': {
           'token': token,
           'notification': {
             'title': title,
             'body': body,
           },
-        }
+        },
       };
 
-      final response = await authClient.post(
-        Uri.parse(endpoint),
+      await client.post(
+        url,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(message),
+        body: jsonEncode(payload),
       );
 
-      authClient.close();
+      client.close();
     } catch (e) {
-      print('Ошибка отправки пуша: $e');
+      // Игнорируем ошибки, чтобы не крашить приложение
     }
   }
 }
