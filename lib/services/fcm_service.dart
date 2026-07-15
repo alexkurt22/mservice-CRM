@@ -41,11 +41,16 @@ class FCMService {
         },
       };
 
-      await client.post(
+      final response = await client.post(
         url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(payload),
       );
+
+      if (response.statusCode != 200) {
+         throw Exception('Ответ Google: Код ${response.statusCode} - ${response.body}');
+      }
+
 
       client.close();
     } catch (e) {
