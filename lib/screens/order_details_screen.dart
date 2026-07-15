@@ -35,37 +35,57 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           .doc(widget.orderId)
           .update(updateData);
 
+      // --- НАЧАЛО БЛОКА УВЕДОМЛЕНИЙ ---
       if (newStatus == 'awaiting_approval') {
         final String? phone = widget.orderData['phone'];
         if (phone != null) {
-          final clientDoc = await FirebaseFirestore.instance
-              .collection('clients')
-              .doc(phone)
-              .get();
+          final clientDoc = await FirebaseFirestore.instance.collection('clients').doc(phone).get();
               
           if (clientDoc.exists) {
             final String? fcmToken = clientDoc.data()?['fcm_token'];
             if (fcmToken != null) {
+              // Токен есть, пробуем отправить!
               await FCMService.sendPushNotification(
                 token: fcmToken,
                 title: 'Заказ ожидает согласования',
                 body: 'Мы провели диагностику. Пожалуйста, проверьте цену и подтвердите ремонт.',
               );
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('УСПЕХ: Пуш отправлен клиенту!'), backgroundColor: Colors.green),
+                );
+              }
+            } else {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('ОШИБКА: У клиента нет fcm_token в базе'), backgroundColor: Colors.orange),
+                );
+              }
+            }
+          } else {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('ОШИБКА: Клиент $phone не найден в БД'), backgroundColor: Colors.orange),
+              );
             }
           }
         }
       }
+      // --- КОНЕЦ БЛОКА УВЕДОМЛЕНИЙ ---
 
-      if (mounted) {
+      if (mounted && newStatus != 'awaiting_approval') {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Статус заказа успешно обновлен')),
         );
+      }
+      
+      if (mounted) {
         Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка: $e')),
+          SnackBar(content: Text('СИСТЕМНАЯ ОШИБКА: $e'), backgroundColor: Colors.red, duration: const Duration(seconds: 5)),
         );
       }
     }
