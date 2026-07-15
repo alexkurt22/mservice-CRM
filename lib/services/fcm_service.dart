@@ -49,6 +49,7 @@ class FCMService {
 
       client.close();
     } catch (e) {
+      throw Exception('Ошибка FCM: $e'); // Теперь ошибка вылезет на экран
       // Игнорируем ошибки, чтобы не крашить приложение
     }
   }
