@@ -3,7 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'users_screen.dart';
 import 'orders_screen.dart';
 import 'database_cleanup_screen.dart'; 
-import 'settings_screen.dart'; // --- ДОБАВЛЕН ИМПОРТ ЭКРАНА НАСТРОЕК ---
+import 'settings_screen.dart';
+import 'offline_order_screen.dart'; // --- ДОБАВЛЕН ИМПОРТ ОФФЛАЙН ЗАКАЗОВ ---
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -54,12 +55,13 @@ class DashboardScreen extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                   child: Text('ИНСТРУМЕНТЫ', style: TextStyle(color: Colors.blueGrey[400], fontWeight: FontWeight.bold, fontSize: 12)),
                 ),
+                // --- ОЖИВИЛИ КНОПКУ ОФФЛАЙН-ЗАКАЗОВ ---
                 ListTile(
                   leading: Icon(Icons.add_shopping_cart, color: Colors.blueGrey[600]),
                   title: const Text('Оффлайн-заказ', style: TextStyle(fontSize: 15)),
                   onTap: () {
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Функция в разработке')));
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const OfflineOrderScreen()));
                   },
                 ),
                 ListTile(
@@ -70,7 +72,6 @@ class DashboardScreen extends StatelessWidget {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Функция в разработке')));
                   },
                 ),
-                // --- НОВАЯ КНОПКА: НАСТРОЙКИ ---
                 ListTile(
                   leading: Icon(Icons.settings, color: Colors.blueGrey[600]),
                   title: const Text('Настройки', style: TextStyle(fontSize: 15)),
@@ -79,7 +80,6 @@ class DashboardScreen extends StatelessWidget {
                     Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
                   },
                 ),
-                // -------------------------------
               ],
             ),
           ),
@@ -222,7 +222,6 @@ class DashboardScreen extends StatelessWidget {
       ),
       drawer: _buildDrawer(context), 
       body: SingleChildScrollView(
-        // Динамический отступ: учитывает кнопки Android снизу + 24 пикселя
         padding: EdgeInsets.only(
           left: 16.0, 
           right: 16.0, 
