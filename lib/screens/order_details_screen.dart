@@ -55,6 +55,93 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
+  // --- НОВАЯ ФУНКЦИЯ: БЫСТРЫЙ СТАРТ РЕМОНТА (ОФФЛАЙН/УСТНО) ---
+  Future<void> _showForceStartDialog() async {
+    final priceController = TextEditingController();
+    final commentController = TextEditingController();
+    
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Принять в работу (Устно)', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Укажите согласованную цену и диагноз. Заказ сразу перейдет в статус "В работе".', style: TextStyle(fontSize: 13, color: Colors.blueGrey)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: priceController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Итоговая цена (TMT)',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.payments, color: Colors.green),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: commentController,
+              decoration: const InputDecoration(
+                labelText: 'Диагноз / Комментарий',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.build),
+              ),
+              maxLines: 2,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[600], foregroundColor: Colors.white),
+            onPressed: () async {
+              final price = priceController.text.trim();
+              final comment = commentController.text.trim();
+              if (price.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Укажите цену!'), backgroundColor: Colors.red));
+                return;
+              }
+              Navigator.pop(ctx);
+              await _forceStartOrder(price, comment);
+            },
+            child: const Text('Принять в работу'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _forceStartOrder(String price, String comment) async {
+    setState(() => _isLoading = true);
+    try {
+      await FirebaseFirestore.instance.collection('orders').doc(widget.orderId).update({
+        'status': 'in_progress',
+        'price': price,
+        'admin_comment': comment.isNotEmpty ? comment : 'Согласовано устно',
+        'has_unread_update': true,
+        // Удаляем варианты, если они были, так как мы согласовали устно
+        'options': FieldValue.delete(),
+        'selected_option_index': FieldValue.delete(),
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Заказ переведен в работу!'), backgroundColor: Colors.green),
+        );
+        Navigator.pop(context); // Возвращаемся на Дашборд
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+  // -------------------------------------------------------------
+
   Future<void> _updateStatus(String newStatus, {bool isAwaitingApproval = false, bool isBargainingMode = false}) async {
     setState(() => _isLoading = true);
     try {
@@ -250,12 +337,11 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              // --- ИСПРАВЛЕНИЕ: ДОБАВЛЕН УМНЫЙ ОТСТУП СНИЗУ ---
               padding: EdgeInsets.only(
                 left: 16.0,
                 right: 16.0,
                 top: 16.0,
-                bottom: MediaQuery.of(context).padding.bottom + 40.0, // Защита от системных кнопок
+                bottom: MediaQuery.of(context).padding.bottom + 40.0, 
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -315,7 +401,33 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
 
                   // --- ЭКРАН НОВОГО ЗАКАЗА (ОЦЕНКА) ---
                   if (status == 'new') ...[
-                    const Text('Оценка ремонта (Варианты для клиента):', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                    // --- НОВАЯ КНОПКА ДЛЯ УСТНОГО СОГЛАСОВАНИЯ ---
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: Colors.blue[600],
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: _showForceStartDialog,
+                      icon: const Icon(Icons.handyman),
+                      label: const Text('ПРИНЯТЬ В РАБОТУ (УСТНО)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    ),
+                    const SizedBox(height: 16),
+                    const Row(
+                      children: [
+                        Expanded(child: Divider()),
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8.0),
+                          child: Text("ИЛИ", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                        ),
+                        Expanded(child: Divider()),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    // -----------------------------------------------
+
+                    const Text('Оценка ремонта (Варианты для приложения):', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
                     const SizedBox(height: 12),
                     ListView.builder(
                       shrinkWrap: true,
@@ -408,6 +520,22 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                       ),
                     ),
                     const SizedBox(height: 24),
+                    
+                    // --- НОВАЯ КНОПКА ДЛЯ УСТНОГО СОГЛАСОВАНИЯ (На случай если клиент перезвонил) ---
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: Colors.blue[600],
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: _showForceStartDialog,
+                      icon: const Icon(Icons.handyman),
+                      label: const Text('ПРИНЯТЬ В РАБОТУ (УСТНО)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    ),
+                    const SizedBox(height: 24),
+                    // -------------------------------------------------------------------------------
+
                     if (widget.orderData.containsKey('options')) ...[
                       const Text('Предложенные варианты:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueGrey)),
                       const SizedBox(height: 12),
@@ -446,7 +574,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                         children: [
                           const Icon(Icons.handyman, color: Colors.blue, size: 28),
                           const SizedBox(width: 12),
-                          const Expanded(child: Text('Клиент дал согласие. Заказ в процессе ремонта.', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue, fontSize: 16))),
+                          const Expanded(child: Text('Заказ в процессе ремонта.', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue, fontSize: 16))),
                         ],
                       ),
                     ),
@@ -625,4 +753,3 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     );
   }
 }
-
