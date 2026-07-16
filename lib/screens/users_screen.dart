@@ -1,4 +1,3 @@
-// Файл: lib/screens/users_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -7,7 +6,10 @@ class UsersScreen extends StatelessWidget {
   const UsersScreen({super.key, required this.initialTab});
 
   void _approveUser(String docId) {
-    FirebaseFirestore.instance.collection('users').doc(docId).update({'status': 'approved'});
+    FirebaseFirestore.instance.collection('clients').doc(docId).update({
+      'is_approved': true,
+      'rejection_reason': null, // Очищаем причину, если вдруг одобряем после отказа
+    });
   }
 
   void _rejectUser(BuildContext context, String docId) {
@@ -20,7 +22,7 @@ class UsersScreen extends StatelessWidget {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: const Text('Причина отклонения'),
+              title: const Text('Причина отклонения', style: TextStyle(fontWeight: FontWeight.bold)),
               content: DropdownButton<String>(
                 value: selectedReason,
                 isExpanded: true,
@@ -30,12 +32,15 @@ class UsersScreen extends StatelessWidget {
                 },
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
+                TextButton(
+                  onPressed: () => Navigator.pop(context), 
+                  child: const Text('Отмена', style: TextStyle(color: Colors.blueGrey))
+                ),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red[700]),
                   onPressed: () {
-                    FirebaseFirestore.instance.collection('users').doc(docId).update({
-                      'status': 'rejected',
+                    FirebaseFirestore.instance.collection('clients').doc(docId).update({
+                      'is_approved': false,
                       'rejection_reason': selectedReason,
                     });
                     Navigator.pop(context);
@@ -50,50 +55,114 @@ class UsersScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildUsersList(String status) {
+  // Универсальный метод построения списка для каждой вкладки
+  Widget _buildUsersList(bool isApproved, bool isRejected) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('users').where('status', isEqualTo: status).snapshots(),
+      // Сначала забираем все документы по флагу is_approved, чтобы не перегружать базу сложными индексами
+      stream: FirebaseFirestore.instance.collection('clients')
+          .where('is_approved', isEqualTo: isApproved)
+          .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return const Center(child: Text('Нет пользователей'));
+          return Center(child: Text('Пусто', style: TextStyle(color: Colors.blueGrey[400], fontSize: 16)));
+        }
+
+        // Фильтруем данные в зависимости от того, какая вкладка открыта
+        var docs = snapshot.data!.docs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          final reason = data['rejection_reason'];
+          if (isApproved) return true; // Вкладка "Активные"
+          if (isRejected) return reason != null; // Вкладка "Отклонены"
+          return reason == null; // Вкладка "Ожидают"
+        }).toList();
+
+        // Сортируем по дате создания (новые сверху)
+        docs.sort((a, b) {
+          final aTime = (a.data() as Map<String, dynamic>)['created_at'] as Timestamp?;
+          final bTime = (b.data() as Map<String, dynamic>)['created_at'] as Timestamp?;
+          if (aTime == null || bTime == null) return 0;
+          return bTime.compareTo(aTime);
+        });
+
+        if (docs.isEmpty) {
+          return Center(child: Text('Пусто', style: TextStyle(color: Colors.blueGrey[400], fontSize: 16)));
         }
 
         return ListView.builder(
-          padding: const EdgeInsets.all(8),
-          itemCount: snapshot.data!.docs.length,
+          padding: const EdgeInsets.all(12),
+          itemCount: docs.length,
           itemBuilder: (context, index) {
-            final doc = snapshot.data!.docs[index];
+            final doc = docs[index];
             final data = doc.data() as Map<String, dynamic>;
+            
+            final isPending = !isApproved && !isRejected;
 
             return Card(
-              child: ListTile(
-                title: Text(data['client_name'] ?? 'Без имени', style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(data['phone'] ?? ''),
-                    if (status == 'pending')
-                      Text('Код: ${data['auth_code'] ?? '-'}', style: const TextStyle(color: Colors.teal, fontWeight: FontWeight.bold)),
-                    if (status == 'rejected')
-                      Text('Причина: ${data['rejection_reason'] ?? '-'}', style: const TextStyle(color: Colors.red)),
-                  ],
+              elevation: 2,
+              margin: const EdgeInsets.only(bottom: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: isApproved ? Colors.green[100] : (isRejected ? Colors.red[100] : Colors.orange[100]),
+                    child: Icon(
+                      isApproved ? Icons.person : (isRejected ? Icons.person_off : Icons.person_add),
+                      color: isApproved ? Colors.green[700] : (isRejected ? Colors.red[700] : Colors.orange[700]),
+                    ),
+                  ),
+                  title: Text(data['name'] ?? 'Без имени', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  subtitle: Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.phone, size: 16, color: Colors.blueGrey),
+                            const SizedBox(width: 6),
+                            Text(data['phone'] ?? '', style: const TextStyle(color: Colors.black87, fontSize: 14)),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        if (isPending)
+                          Row(
+                            children: [
+                              const Icon(Icons.sms, size: 16, color: Colors.deepOrange),
+                              const SizedBox(width: 6),
+                              Text('Код из SMS: ${data['sms_code'] ?? '-'}', style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        if (isRejected)
+                          Row(
+                            children: [
+                              const Icon(Icons.error_outline, size: 16, color: Colors.red),
+                              const SizedBox(width: 6),
+                              Expanded(child: Text('Причина: ${data['rejection_reason'] ?? '-'}', style: const TextStyle(color: Colors.red))),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+                  trailing: isPending ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.check_circle, color: Colors.green, size: 32),
+                        onPressed: () => _approveUser(doc.id),
+                        tooltip: 'Одобрить',
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.cancel, color: Colors.red, size: 32),
+                        onPressed: () => _rejectUser(context, doc.id),
+                        tooltip: 'Отклонить',
+                      ),
+                    ],
+                  ) : null,
                 ),
-                trailing: status == 'pending' ? Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.check_circle, color: Colors.green),
-                      onPressed: () => _approveUser(doc.id),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.cancel, color: Colors.red),
-                      onPressed: () => _rejectUser(context, doc.id),
-                    ),
-                  ],
-                ) : null,
               ),
             );
           },
@@ -108,9 +177,15 @@ class UsersScreen extends StatelessWidget {
       length: 3,
       initialIndex: initialTab,
       child: Scaffold(
+        backgroundColor: Colors.grey[50],
         appBar: AppBar(
+          backgroundColor: Colors.blueGrey[900],
+          foregroundColor: Colors.white,
           title: const Text('Пользователи'),
           bottom: const TabBar(
+            indicatorColor: Colors.white,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white54,
             tabs: [
               Tab(text: 'Ожидают'),
               Tab(text: 'Активные'),
@@ -120,9 +195,9 @@ class UsersScreen extends StatelessWidget {
         ),
         body: TabBarView(
           children: [
-            _buildUsersList('pending'),
-            _buildUsersList('approved'),
-            _buildUsersList('rejected'),
+            _buildUsersList(false, false), // Ожидают (isApproved: false, isRejected: false)
+            _buildUsersList(true, false),  // Активные
+            _buildUsersList(false, true),  // Отклонены
           ],
         ),
       ),
