@@ -23,7 +23,9 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       'price': TextEditingController(),
     }
   ];
+  
   bool _isLoading = false;
+  bool _isBargaining = false; // Флаг режима "Торг"
 
   @override
   void dispose() {
@@ -53,7 +55,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
-  Future<void> _updateStatus(String newStatus, {bool isAwaitingApproval = false}) async {
+  Future<void> _updateStatus(String newStatus, {bool isAwaitingApproval = false, bool isBargainingMode = false}) async {
     setState(() => _isLoading = true);
     try {
       Map<String, dynamic> updateData = {
@@ -83,7 +85,20 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           return;
         }
 
+        // --- МАГИЯ СОХРАНЕНИЯ ИСТОРИИ ТОРГОВ ---
+        if (isBargainingMode) {
+          List<dynamic> oldOptions = widget.orderData['options'] ?? [];
+          List<dynamic> currentHistory = widget.orderData['history'] ?? [];
+          if (oldOptions.isNotEmpty) {
+            // Берем старые варианты и кладем их в архив history
+            currentHistory.add({'options': oldOptions});
+            updateData['history'] = currentHistory;
+          }
+        }
+
         updateData['options'] = optionsData;
+        // Удаляем старый выбор клиента, чтобы он выбрал заново
+        updateData['selected_option_index'] = FieldValue.delete();
       }
 
       await FirebaseFirestore.instance.collection('orders').doc(widget.orderId).update(updateData);
@@ -97,13 +112,13 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
             if (fcmToken != null) {
               await FCMService.sendPushNotification(
                 token: fcmToken,
-                title: 'Заказ ожидает согласования',
-                body: 'Мастер предложил варианты ремонта. Выберите подходящий.',
+                title: isBargainingMode ? 'Новое предложение от мастера!' : 'Заказ ожидает согласования',
+                body: isBargainingMode ? 'Мастер предложил новые условия ремонта. Ознакомьтесь!' : 'Мастер предложил варианты ремонта. Выберите подходящий.',
               );
             }
           }
         }
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Отправлено на согласование'), backgroundColor: Colors.green));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isBargainingMode ? 'Новые условия отправлены!' : 'Отправлено на согласование'), backgroundColor: Colors.green));
       } else if (newStatus == 'completed') {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ремонт завершен'), backgroundColor: Colors.green));
       } else if (newStatus == 'canceled') {
@@ -116,6 +131,48 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  // --- БЛОК ОТРИСОВКИ ИСТОРИИ ТОРГОВ В АДМИНКЕ ---
+  Widget _buildHistoryBlock(Map<String, dynamic> data) {
+    final history = data['history'] as List<dynamic>?;
+    if (history == null || history.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('История прошлых предложений:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.blueGrey)),
+        const SizedBox(height: 8),
+        ...history.asMap().entries.map((entry) {
+          int round = entry.key + 1;
+          List<dynamic> oldOptions = entry.value['options'] ?? [];
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Раунд $round (Отклонено)', style: TextStyle(color: Colors.red[400], fontWeight: FontWeight.bold, fontSize: 12)),
+                const SizedBox(height: 6),
+                ...oldOptions.map((opt) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    '${opt['description']} — ${opt['price']} TMT',
+                    style: const TextStyle(color: Colors.grey, decoration: TextDecoration.lineThrough, fontSize: 13),
+                  ),
+                )).toList(),
+              ],
+            ),
+          );
+        }).toList(),
+        const SizedBox(height: 16),
+      ],
+    );
   }
 
   Widget _buildAuditTrail(Map<String, dynamic> data) {
@@ -252,6 +309,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                   ),
                   const SizedBox(height: 24),
 
+                  _buildHistoryBlock(widget.orderData), // <-- ВЫВОДИМ ИСТОРИЮ ТОРГОВ
+
                   // --- ЭКРАН НОВОГО ЗАКАЗА (ОЦЕНКА) ---
                   if (status == 'new') ...[
                     const Text('Оценка ремонта (Варианты для клиента):', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
@@ -362,6 +421,10 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                           ),
                         );
                       }),
+                    ] else ...[
+                      Text('Диагноз/Комментарий: ${widget.orderData['admin_comment'] ?? 'Нет'}', style: const TextStyle(fontSize: 16)),
+                      const SizedBox(height: 8),
+                      Text('Стоимость: ${widget.orderData['price'] ?? 'Не указана'} TMT', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     ],
                     const SizedBox(height: 24),
                     TextButton.icon(
@@ -417,36 +480,141 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     _buildAuditTrail(widget.orderData),
                   ],
 
-                  // --- ЭКРАН ОТМЕНЕН ---
+                  // --- ЭКРАН ОТМЕНЕН (С ВОРОНКОЙ УДЕРЖАНИЯ) ---
                   if (status == 'canceled') ...[
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.red[300]!)),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.error_outline, color: Colors.red, size: 28),
-                          const SizedBox(width: 12),
-                          const Expanded(child: Text('Заказ отменен (клиентом или администратором)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontSize: 16))),
-                        ],
+                    if (!_isBargaining) ...[
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.red[300]!)),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error_outline, color: Colors.red, size: 28),
+                            const SizedBox(width: 12),
+                            const Expanded(child: Text('Заказ отменен (клиентом или администратором)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontSize: 16))),
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    if (widget.orderData.containsKey('options')) ...[
-                      const Text('Были предложены варианты:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueGrey)),
+                      const SizedBox(height: 16),
+                      if (widget.orderData.containsKey('options')) ...[
+                        const Text('Были предложены варианты:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueGrey)),
+                        const SizedBox(height: 8),
+                        ...(widget.orderData['options'] as List<dynamic>).map((opt) {
+                          return Card(
+                            elevation: 0,
+                            color: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey[200]!)),
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: ListTile(
+                              title: Text(opt['description'] ?? '', style: const TextStyle(color: Colors.grey, decoration: TextDecoration.lineThrough)),
+                              subtitle: Text('${opt['price']} TMT', style: const TextStyle(color: Colors.grey)),
+                              leading: const Icon(Icons.close, color: Colors.grey),
+                            ),
+                          );
+                        }),
+                      ],
+                      const SizedBox(height: 32),
+                      
+                      // КНОПКА ВОРОНКИ УДЕРЖАНИЯ
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue[600],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _isBargaining = true;
+                            _options.clear();
+                            _options.add({'description': TextEditingController(), 'price': TextEditingController()});
+                          });
+                        },
+                        icon: const Icon(Icons.local_offer),
+                        label: const Text('ПРЕДЛОЖИТЬ НОВЫЕ УСЛОВИЯ (ТОРГ)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                      ),
+                    ] else ...[
+                      // --- ИНТЕРФЕЙС ТОРГА ---
+                      const Text('Новые варианты ремонта (Скидка / БУ деталь):', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                      const SizedBox(height: 12),
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _options.length,
+                        itemBuilder: (context, index) {
+                          return Card(
+                            elevation: 1,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.blue[300]!)),
+                            margin: const EdgeInsets.only(bottom: 16),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text('Спец-предложение ${index + 1}', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue[800])),
+                                      if (_options.length > 1)
+                                        IconButton(
+                                          icon: const Icon(Icons.delete_outline, color: Colors.red),
+                                          onPressed: () => _removeOption(index),
+                                        ),
+                                    ],
+                                  ),
+                                  TextField(
+                                    controller: _options[index]['description'],
+                                    decoration: InputDecoration(
+                                      labelText: 'Новые условия (напр., скидка 15%)',
+                                      filled: true,
+                                      fillColor: Colors.blue[50],
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                                    ),
+                                    maxLines: 2,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  TextField(
+                                    controller: _options[index]['price'],
+                                    decoration: InputDecoration(
+                                      labelText: 'Новая цена (TMT)',
+                                      prefixIcon: const Icon(Icons.payments_outlined, color: Colors.green),
+                                      filled: true,
+                                      fillColor: Colors.blue[50],
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                                    ),
+                                    keyboardType: TextInputType.number,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          side: BorderSide(color: Colors.blue[400]!),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        onPressed: _addOption,
+                        icon: const Icon(Icons.add_circle_outline, color: Colors.blue),
+                        label: const Text('ДОБАВИТЬ ЕЩЕ ВАРИАНТ', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                      ),
+                      const SizedBox(height: 32),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          backgroundColor: Colors.orange[600],
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: () => _updateStatus('awaiting_approval', isAwaitingApproval: true, isBargainingMode: true),
+                        icon: const Icon(Icons.send),
+                        label: const Text('ОТПРАВИТЬ НОВОЕ ПРЕДЛОЖЕНИЕ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      ),
                       const SizedBox(height: 8),
-                      ...(widget.orderData['options'] as List<dynamic>).map((opt) {
-                        return Card(
-                          elevation: 0,
-                          color: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey[200]!)),
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            title: Text(opt['description'] ?? '', style: const TextStyle(color: Colors.grey, decoration: TextDecoration.lineThrough)),
-                            subtitle: Text('${opt['price']} TMT', style: const TextStyle(color: Colors.grey)),
-                            leading: const Icon(Icons.close, color: Colors.grey),
-                          ),
-                        );
-                      }),
+                      TextButton(
+                        onPressed: () => setState(() => _isBargaining = false),
+                        child: const Text('Отмена', style: TextStyle(color: Colors.grey, fontSize: 16)),
+                      ),
                     ]
                   ],
                 ],
