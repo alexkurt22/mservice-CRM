@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'users_screen.dart';
 import 'orders_screen.dart';
 import 'database_cleanup_screen.dart'; 
+import 'settings_screen.dart'; // --- ДОБАВЛЕН ИМПОРТ ЭКРАНА НАСТРОЕК ---
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -69,6 +70,16 @@ class DashboardScreen extends StatelessWidget {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Функция в разработке')));
                   },
                 ),
+                // --- НОВАЯ КНОПКА: НАСТРОЙКИ ---
+                ListTile(
+                  leading: Icon(Icons.settings, color: Colors.blueGrey[600]),
+                  title: const Text('Настройки', style: TextStyle(fontSize: 15)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+                  },
+                ),
+                // -------------------------------
               ],
             ),
           ),
