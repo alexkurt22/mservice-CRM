@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'admin_layout.dart';
+import 'screens/dashboard_screen.dart'; // Указываем прямой путь на наш новый Дашборд
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,12 +17,13 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false, // Убираем красную ленточку "DEBUG" в углу
       title: 'M-Service CRM',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueGrey), // Корпоративный цвет
         useMaterial3: true,
       ),
-      home: const AdminLayout(),
+      home: const DashboardScreen(), // Сразу загружаем Дашборд без "матрешек"
     );
   }
 }
