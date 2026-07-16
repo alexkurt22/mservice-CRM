@@ -106,7 +106,7 @@ class DashboardScreen extends StatelessWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Выручка (Готовые)', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                    const Text('Выручка (Выполненные заказы)', style: TextStyle(color: Colors.white70, fontSize: 14)),
                     const SizedBox(height: 8),
                     Text(
                       '${totalRevenue.toStringAsFixed(0)} TMT',
@@ -143,7 +143,7 @@ class DashboardScreen extends StatelessWidget {
             children: [
               _buildStatCard(
                 context: context,
-                title: 'Новые заявки',
+                title: 'Новые заказы',
                 icon: Icons.new_releases,
                 color: Colors.orange,
                 child: _buildStreamStat(
@@ -178,7 +178,7 @@ class DashboardScreen extends StatelessWidget {
             children: [
               _buildStatCard(
                 context: context,
-                title: 'Ожидают СМС',
+                title: 'Ожидают подтверждения',
                 icon: Icons.mark_email_unread,
                 color: Colors.red,
                 child: _buildStreamStat(
