@@ -25,7 +25,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   ];
   
   bool _isLoading = false;
-  bool _isBargaining = false; // Флаг режима "Торг"
+  bool _isBargaining = false; 
 
   @override
   void dispose() {
@@ -85,19 +85,16 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           return;
         }
 
-        // --- МАГИЯ СОХРАНЕНИЯ ИСТОРИИ ТОРГОВ ---
         if (isBargainingMode) {
           List<dynamic> oldOptions = widget.orderData['options'] ?? [];
           List<dynamic> currentHistory = widget.orderData['history'] ?? [];
           if (oldOptions.isNotEmpty) {
-            // Берем старые варианты и кладем их в архив history
             currentHistory.add({'options': oldOptions});
             updateData['history'] = currentHistory;
           }
         }
 
         updateData['options'] = optionsData;
-        // Удаляем старый выбор клиента, чтобы он выбрал заново
         updateData['selected_option_index'] = FieldValue.delete();
       }
 
@@ -133,7 +130,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
-  // --- БЛОК ОТРИСОВКИ ИСТОРИИ ТОРГОВ В АДМИНКЕ ---
   Widget _buildHistoryBlock(Map<String, dynamic> data) {
     final history = data['history'] as List<dynamic>?;
     if (history == null || history.isEmpty) return const SizedBox.shrink();
@@ -254,7 +250,13 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
+              // --- ИСПРАВЛЕНИЕ: ДОБАВЛЕН УМНЫЙ ОТСТУП СНИЗУ ---
+              padding: EdgeInsets.only(
+                left: 16.0,
+                right: 16.0,
+                top: 16.0,
+                bottom: MediaQuery.of(context).padding.bottom + 40.0, // Защита от системных кнопок
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -309,7 +311,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  _buildHistoryBlock(widget.orderData), // <-- ВЫВОДИМ ИСТОРИЮ ТОРГОВ
+                  _buildHistoryBlock(widget.orderData), 
 
                   // --- ЭКРАН НОВОГО ЗАКАЗА (ОЦЕНКА) ---
                   if (status == 'new') ...[
