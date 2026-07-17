@@ -24,7 +24,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isWaitingForApproval = false; // Режим ожидания модерации
 
   // ❗ ВПИШИ СЮДА СВОЙ НОМЕР ТЕЛЕФОНА ДЛЯ ПОЛУЧЕНИЯ SMS ОТ СОТРУДНИКОВ ❗
-  final String ownerPhone = '+99365XXXXXX'; 
+  final String ownerPhone = '+99363644925'; 
 
   Future<void> _handleAuth() async {
     if (!_formKey.currentState!.validate()) return;
