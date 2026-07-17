@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
-import 'categories_management_screen.dart'; // --- ДОБАВЛЕН ИМПОРТ НОВОГО ЭКРАНА ---
+import 'package:shared_preferences/shared_preferences.dart';
+import 'categories_management_screen.dart'; 
+import 'login_screen.dart'; // Для выхода из аккаунта
+import 'employees_management_screen.dart'; // Экран модерации (создадим в следующем шаге)
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -15,7 +18,20 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
-          // --- НОВАЯ СЕКЦИЯ ДЛЯ УПРАВЛЕНИЯ КОНТЕНТОМ ---
+          // --- НОВАЯ СЕКЦИЯ ДЛЯ МОДЕРАЦИИ СОТРУДНИКОВ ---
+          _buildSectionHeader('Команда'),
+          ListTile(
+            leading: const Icon(Icons.people_alt, color: Colors.blueGrey),
+            title: const Text('Сотрудники и доступы'),
+            subtitle: const Text('Модерация заявок и роли'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const EmployeesManagementScreen()));
+            },
+          ),
+          const Divider(),
+          // ---------------------------------------------
+
           _buildSectionHeader('Контент и База'),
           ListTile(
             leading: const Icon(Icons.category, color: Colors.blueGrey),
@@ -27,7 +43,6 @@ class SettingsScreen extends StatelessWidget {
             },
           ),
           const Divider(),
-          // ---------------------------------------------
           
           _buildSectionHeader('Основные'),
           SwitchListTile(
@@ -65,11 +80,23 @@ class SettingsScreen extends StatelessWidget {
               );
             },
           ),
+          // --- РАБОЧАЯ КНОПКА ВЫХОДА ---
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.red),
             title: const Text('Выйти', style: TextStyle(color: Colors.red)),
-            onTap: () {
-              // Логика выхода (Firebase Auth sign out)
+            onTap: () async {
+              // Очищаем сессию в телефоне
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.remove('employee_phone');
+              
+              if (context.mounted) {
+                // Полностью очищаем историю навигации и кидаем на экран логина
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  (route) => false,
+                );
+              }
             },
           ),
         ],
