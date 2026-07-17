@@ -9,7 +9,6 @@ import 'internal_chat_screen.dart';
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
-  // --- ОБНОВЛЕННОЕ БОКОВОЕ МЕНЮ (ТОЛЬКО ИНСТРУМЕНТЫ) ---
   Widget _buildDrawer(BuildContext context) {
     return Drawer(
       backgroundColor: Colors.white,
@@ -85,7 +84,6 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  // --- КАРТОЧКА СТАТИСТИКИ ---
   Widget _buildStatCard({
     required BuildContext context,
     required String title,
@@ -156,7 +154,6 @@ class DashboardScreen extends StatelessWidget {
         elevation: 0,
       ),
       drawer: _buildDrawer(context), 
-      // Оставляем чат сотрудников плавающей кнопкой
       floatingActionButton: FloatingActionButton(
         onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const InternalChatScreen())),
         backgroundColor: Colors.orange[600],
@@ -187,6 +184,7 @@ class DashboardScreen extends StatelessWidget {
               crossAxisSpacing: 12,
               childAspectRatio: 1.1,
               children: [
+                // Индекс 0: Ждут одобрения
                 _buildStatCard(
                   context: context,
                   title: 'Ждут одобрения',
@@ -202,6 +200,7 @@ class DashboardScreen extends StatelessWidget {
                   ),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(initialTab: 0))),
                 ),
+                // Индекс 1: Незарегистрированные (Оффлайн)
                 _buildStatCard(
                   context: context,
                   title: 'Незарегистрированные',
@@ -212,11 +211,12 @@ class DashboardScreen extends StatelessWidget {
                     color: Colors.grey[800]!,
                     filter: (doc) {
                       final data = doc.data() as Map<String, dynamic>;
-                      return data['is_offline'] == true; // Оффлайн-клиенты
+                      return data['is_offline'] == true;
                     }
                   ),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(initialTab: 1))),
                 ),
+                // Индекс 2: Зарегистрированные (Активные)
                 _buildStatCard(
                   context: context,
                   title: 'Зарегистрированные',
@@ -230,8 +230,9 @@ class DashboardScreen extends StatelessWidget {
                       return data['is_approved'] == true;
                     }
                   ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(initialTab: 1))),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(initialTab: 2))),
                 ),
+                // Индекс 3: Отклоненные
                 _buildStatCard(
                   context: context,
                   title: 'Отклоненные',
@@ -245,7 +246,7 @@ class DashboardScreen extends StatelessWidget {
                       return data['is_approved'] == false && data['rejection_reason'] != null;
                     }
                   ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(initialTab: 2))), // В будущем добавим вкладку "Отклоненные"
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(initialTab: 3))),
                 ),
               ],
             ),
@@ -269,6 +270,7 @@ class DashboardScreen extends StatelessWidget {
               crossAxisSpacing: 12,
               childAspectRatio: 1.1,
               children: [
+                // Индекс 0: Новые заказы
                 _buildStatCard(
                   context: context,
                   title: 'Новые заказы',
@@ -280,6 +282,7 @@ class DashboardScreen extends StatelessWidget {
                   ),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 0))),
                 ),
+                // Индекс 1: Ожидают ответа клиента
                 _buildStatCard(
                   context: context,
                   title: 'Ожидают ответа',
@@ -289,8 +292,9 @@ class DashboardScreen extends StatelessWidget {
                     stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'awaiting_approval').snapshots(),
                     color: Colors.deepPurple[800]!,
                   ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 1))), // В будущем разделим вкладки
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 1))),
                 ),
+                // Индекс 2: Выполняются
                 _buildStatCard(
                   context: context,
                   title: 'Выполняются',
@@ -300,8 +304,9 @@ class DashboardScreen extends StatelessWidget {
                     stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'in_progress').snapshots(),
                     color: Colors.orange[800]!,
                   ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 1))),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 2))),
                 ),
+                // Индекс 3: Выполненные
                 _buildStatCard(
                   context: context,
                   title: 'Выполненные',
@@ -311,7 +316,7 @@ class DashboardScreen extends StatelessWidget {
                     stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'completed').snapshots(),
                     color: Colors.teal[800]!,
                   ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 2))), // Вкладка завершенных
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 3))),
                 ),
               ],
             ),
@@ -322,3 +327,4 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 }
+
