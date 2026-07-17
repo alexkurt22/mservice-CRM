@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:intl/intl.dart'; // Добавь в pubspec.yaml: intl: ^0.18.0
+import 'package:intl/intl.dart'; 
 
 class PrivateChatScreen extends StatefulWidget {
   final String roomId;
@@ -40,7 +40,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       'is_read': false,
     });
     
-    // Обновляем последнее сообщение в комнате
+    // Обновляем последнее сообщение для списка чатов
     await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({
       'last_message': text,
       'last_message_time': FieldValue.serverTimestamp(),
@@ -50,7 +50,11 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.targetName), backgroundColor: Colors.blueGrey[900], foregroundColor: Colors.white),
+      appBar: AppBar(
+        title: Text(widget.targetName), 
+        backgroundColor: Colors.blueGrey[900], 
+        foregroundColor: Colors.white
+      ),
       body: Column(
         children: [
           Expanded(
@@ -68,7 +72,10 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 
                 return ListView.builder(
                   reverse: true,
-                  padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 80),
+                  padding: EdgeInsets.only(
+                    top: 10,
+                    bottom: MediaQuery.of(context).padding.bottom + 80.0
+                  ),
                   itemCount: messages.length,
                   itemBuilder: (ctx, i) {
                     final data = messages[i].data() as Map<String, dynamic>;
@@ -76,7 +83,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                     final Timestamp? ts = data['created_at'] as Timestamp?;
                     final DateTime dt = ts?.toDate() ?? DateTime.now();
                     
-                    // Логика разделителя даты
+                    // Проверка на смену дня
                     bool showDate = false;
                     if (i == messages.length - 1) {
                       showDate = true;
@@ -129,13 +136,17 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
               },
             ),
           ),
-          Padding(
-            padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 8, left: 8, right: 8, top: 8),
-            child: Row(
-              children: [
-                Expanded(child: TextField(controller: _controller, decoration: const InputDecoration(hintText: 'Сообщение...'))),
-                IconButton(icon: const Icon(Icons.send), onPressed: _sendMessage),
-              ],
+          // ❗ ЗАЩИТНЫЙ ОТСТУП СНИЗУ ДЛЯ ПОЛЯ ВВОДА
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Row(
+                children: [
+                  Expanded(child: TextField(controller: _controller, decoration: const InputDecoration(hintText: 'Сообщение...', border: OutlineInputBorder()))),
+                  IconButton(icon: const Icon(Icons.send), onPressed: _sendMessage),
+                ],
+              ),
             ),
           ),
         ],
@@ -143,4 +154,3 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     );
   }
 }
-
