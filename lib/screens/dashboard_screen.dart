@@ -4,12 +4,12 @@ import 'users_screen.dart';
 import 'orders_screen.dart';
 import 'database_cleanup_screen.dart'; 
 import 'settings_screen.dart';
-import 'offline_order_screen.dart'; // --- ДОБАВЛЕН ИМПОРТ ОФФЛАЙН ЗАКАЗОВ ---
+import 'offline_order_screen.dart'; 
+import 'internal_chat_screen.dart'; // --- ДОБАВЛЕН ИМПОРТ ВНУТРЕННЕГО ЧАТА ---
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
-  // --- УЛУЧШЕННОЕ БОКОВОЕ МЕНЮ (С ЗАЩИТОЙ ОТ ПЕРЕКРЫТИЯ СИСТЕМНЫХ КНОПОК) ---
   Widget _buildDrawer(BuildContext context) {
     return Drawer(
       backgroundColor: Colors.white,
@@ -24,7 +24,6 @@ class DashboardScreen extends StatelessWidget {
               child: Icon(Icons.admin_panel_settings, size: 40, color: Colors.blueGrey[900]),
             ),
           ),
-          // Оборачиваем список в Expanded, чтобы меню скроллилось на маленьких экранах
           Expanded(
             child: ListView(
               padding: EdgeInsets.zero,
@@ -50,12 +49,27 @@ class DashboardScreen extends StatelessWidget {
                     Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(initialTab: 1)));
                   },
                 ),
+                
+                // --- НОВАЯ СЕКЦИЯ КОММУНИКАЦИИ ---
+                const Divider(height: 32),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                  child: Text('КОММУНИКАЦИЯ', style: TextStyle(color: Colors.blueGrey[400], fontWeight: FontWeight.bold, fontSize: 12)),
+                ),
+                ListTile(
+                  leading: Icon(Icons.forum, color: Colors.orange[600]),
+                  title: const Text('Чат сотрудников', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const InternalChatScreen()));
+                  },
+                ),
+                
                 const Divider(height: 32),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                   child: Text('ИНСТРУМЕНТЫ', style: TextStyle(color: Colors.blueGrey[400], fontWeight: FontWeight.bold, fontSize: 12)),
                 ),
-                // --- ОЖИВИЛИ КНОПКУ ОФФЛАЙН-ЗАКАЗОВ ---
                 ListTile(
                   leading: Icon(Icons.add_shopping_cart, color: Colors.blueGrey[600]),
                   title: const Text('Оффлайн-заказ', style: TextStyle(fontSize: 15)),
@@ -84,7 +98,6 @@ class DashboardScreen extends StatelessWidget {
             ),
           ),
           const Divider(height: 1),
-          // SafeArea защищает кнопку от системного бара Android!
           SafeArea(
             top: false,
             child: ListTile(
@@ -221,12 +234,21 @@ class DashboardScreen extends StatelessWidget {
         elevation: 0,
       ),
       drawer: _buildDrawer(context), 
+      // --- ПЛАВАЮЩАЯ КНОПКА КОРПОРАТИВНОГО ЧАТА ---
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const InternalChatScreen()));
+        },
+        backgroundColor: Colors.orange[600],
+        icon: const Icon(Icons.chat_bubble, color: Colors.white),
+        label: const Text('Чат', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      ),
       body: SingleChildScrollView(
         padding: EdgeInsets.only(
           left: 16.0, 
           right: 16.0, 
           top: 16.0, 
-          bottom: MediaQuery.of(context).padding.bottom + 24.0
+          bottom: MediaQuery.of(context).padding.bottom + 80.0 // Увеличен отступ снизу, чтобы FAB не перекрывал контент
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -318,4 +340,3 @@ class LinearAppGradient extends LinearGradient {
   const LinearAppGradient({required List<Color> colors})
       : super(colors: colors, begin: Alignment.topLeft, end: Alignment.bottomRight);
 }
-
