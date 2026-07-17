@@ -4,12 +4,12 @@ import 'users_screen.dart';
 import 'orders_screen.dart';
 import 'database_cleanup_screen.dart'; 
 import 'settings_screen.dart';
-import 'offline_order_screen.dart'; 
-import 'internal_chat_screen.dart'; // --- ДОБАВЛЕН ИМПОРТ ВНУТРЕННЕГО ЧАТА ---
+import 'internal_chat_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
+  // --- ОБНОВЛЕННОЕ БОКОВОЕ МЕНЮ (ТОЛЬКО ИНСТРУМЕНТЫ) ---
   Widget _buildDrawer(BuildContext context) {
     return Drawer(
       backgroundColor: Colors.white,
@@ -17,8 +17,8 @@ class DashboardScreen extends StatelessWidget {
         children: [
           UserAccountsDrawerHeader(
             decoration: BoxDecoration(color: Colors.blueGrey[900]),
-            accountName: const Text('M-SERVICE', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
-            accountEmail: const Text('Панель администратора', style: TextStyle(color: Colors.white70, fontSize: 14)),
+            accountName: const Text('M-SERVICE CRM', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+            accountEmail: const Text('Панель Владельца', style: TextStyle(color: Colors.white70, fontSize: 14)),
             currentAccountPicture: CircleAvatar(
               backgroundColor: Colors.white,
               child: Icon(Icons.admin_panel_settings, size: 40, color: Colors.blueGrey[900]),
@@ -28,67 +28,37 @@ class DashboardScreen extends StatelessWidget {
             child: ListView(
               padding: EdgeInsets.zero,
               children: [
-                ListTile(
-                  leading: Icon(Icons.dashboard, color: Colors.blueGrey[800]),
-                  title: const Text('Главный экран', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  onTap: () => Navigator.pop(context), 
-                ),
-                ListTile(
-                  leading: Icon(Icons.list_alt, color: Colors.blueGrey[800]),
-                  title: const Text('Управление заказами', style: TextStyle(fontSize: 16)),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 0)));
-                  },
-                ),
-                ListTile(
-                  leading: Icon(Icons.people, color: Colors.blueGrey[800]),
-                  title: const Text('Пользователи', style: TextStyle(fontSize: 16)),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(initialTab: 1)));
-                  },
-                ),
-                
-                // --- НОВАЯ СЕКЦИЯ КОММУНИКАЦИИ ---
-                const Divider(height: 32),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                  child: Text('КОММУНИКАЦИЯ', style: TextStyle(color: Colors.blueGrey[400], fontWeight: FontWeight.bold, fontSize: 12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                  child: Text('ИНСТРУМЕНТЫ', style: TextStyle(color: Colors.blueGrey[400], fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.2)),
                 ),
                 ListTile(
-                  leading: Icon(Icons.forum, color: Colors.orange[600]),
-                  title: const Text('Чат сотрудников', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                  leading: Icon(Icons.bar_chart, color: Colors.blueGrey[700]),
+                  title: const Text('Статистика', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const InternalChatScreen()));
-                  },
-                ),
-                
-                const Divider(height: 32),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                  child: Text('ИНСТРУМЕНТЫ', style: TextStyle(color: Colors.blueGrey[400], fontWeight: FontWeight.bold, fontSize: 12)),
-                ),
-                ListTile(
-                  leading: Icon(Icons.add_shopping_cart, color: Colors.blueGrey[600]),
-                  title: const Text('Оффлайн-заказ', style: TextStyle(fontSize: 15)),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const OfflineOrderScreen()));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('В разработке: Подробная статистика')));
                   },
                 ),
                 ListTile(
-                  leading: Icon(Icons.send, color: Colors.blueGrey[600]),
-                  title: const Text('Создать рассылку', style: TextStyle(fontSize: 15)),
+                  leading: Icon(Icons.send_to_mobile, color: Colors.blueGrey[700]),
+                  title: const Text('Создать рассылку', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   onTap: () {
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Функция в разработке')));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('В разработке: Маркетинговые Push-рассылки')));
                   },
                 ),
                 ListTile(
-                  leading: Icon(Icons.settings, color: Colors.blueGrey[600]),
-                  title: const Text('Настройки', style: TextStyle(fontSize: 15)),
+                  leading: Icon(Icons.edit_note, color: Colors.blueGrey[700]),
+                  title: const Text('Заметки администратора', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('В разработке: Дневник администратора')));
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.settings, color: Colors.blueGrey[700]),
+                  title: const Text('Настройки', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
@@ -115,6 +85,7 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
+  // --- КАРТОЧКА СТАТИСТИКИ ---
   Widget _buildStatCard({
     required BuildContext context,
     required String title,
@@ -130,18 +101,18 @@ class DashboardScreen extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(12.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 36, color: color),
-              const SizedBox(height: 12),
+              Icon(icon, size: 32, color: color),
+              const SizedBox(height: 8),
               child,
               const SizedBox(height: 8),
               Text(
                 title,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey),
               ),
             ],
           ),
@@ -161,7 +132,6 @@ class DashboardScreen extends StatelessWidget {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(strokeWidth: 2));
         }
-        
         int count = 0;
         if (snapshot.hasData) {
           if (filter != null) {
@@ -170,55 +140,7 @@ class DashboardScreen extends StatelessWidget {
             count = snapshot.data!.docs.length;
           }
         }
-        
-        return Text(count.toString(), style: TextStyle(fontSize: 28, color: color, fontWeight: FontWeight.w900));
-      },
-    );
-  }
-
-  Widget _buildRevenueStat() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'completed').snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const CircularProgressIndicator();
-        }
-
-        double totalRevenue = 0;
-        if (snapshot.hasData) {
-          for (var doc in snapshot.data!.docs) {
-            final data = doc.data() as Map<String, dynamic>;
-            final priceRaw = data['price'];
-            if (priceRaw != null) {
-               totalRevenue += double.tryParse(priceRaw.toString()) ?? 0;
-            }
-          }
-        }
-
-        return Container(
-          decoration: BoxDecoration(
-            gradient: LinearAppGradient(colors: [Colors.green[700]!, Colors.teal[800]!]),
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [BoxShadow(color: Colors.green.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Выручка (Выполненные)', style: TextStyle(color: Colors.white70, fontSize: 14)),
-                    const SizedBox(height: 8),
-                    Text('${totalRevenue.toStringAsFixed(0)} TMT', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-                const Icon(Icons.account_balance_wallet, size: 48, color: Colors.white30),
-              ],
-            ),
-          ),
-        );
+        return Text(count.toString(), style: TextStyle(fontSize: 26, color: color, fontWeight: FontWeight.w900));
       },
     );
   }
@@ -226,105 +148,170 @@ class DashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Colors.grey[100],
       appBar: AppBar(
         backgroundColor: Colors.blueGrey[900],
         foregroundColor: Colors.white,
-        title: const Text('Главный экран', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        title: const Text('Сводка CRM', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         elevation: 0,
       ),
       drawer: _buildDrawer(context), 
-      // --- ПЛАВАЮЩАЯ КНОПКА КОРПОРАТИВНОГО ЧАТА ---
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => const InternalChatScreen()));
-        },
+      // Оставляем чат сотрудников плавающей кнопкой
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const InternalChatScreen())),
         backgroundColor: Colors.orange[600],
-        icon: const Icon(Icons.chat_bubble, color: Colors.white),
-        label: const Text('Чат', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        child: const Icon(Icons.forum, color: Colors.white),
       ),
       body: SingleChildScrollView(
         padding: EdgeInsets.only(
-          left: 16.0, 
-          right: 16.0, 
-          top: 16.0, 
-          bottom: MediaQuery.of(context).padding.bottom + 80.0 // Увеличен отступ снизу, чтобы FAB не перекрывал контент
+          left: 16.0, right: 16.0, top: 16.0, 
+          bottom: MediaQuery.of(context).padding.bottom + 80.0
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildRevenueStat(),
-            const SizedBox(height: 32),
-            
-            const Text('Сводка по заказам', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-            const SizedBox(height: 12),
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 16,
-              crossAxisSpacing: 16,
+            // ================== БЛОК 1: КЛИЕНТЫ ==================
+            Row(
               children: [
-                _buildStatCard(
-                  context: context,
-                  title: 'Новые заказы',
-                  icon: Icons.new_releases,
-                  color: Colors.orange,
-                  child: _buildStreamStat(
-                    stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'new').snapshots(),
-                    color: Colors.orange[800]!,
-                  ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 0))),
-                ),
-                _buildStatCard(
-                  context: context,
-                  title: 'Все заказы',
-                  icon: Icons.list_alt,
-                  color: Colors.blue,
-                  child: _buildStreamStat(
-                    stream: FirebaseFirestore.instance.collection('orders').snapshots(),
-                    color: Colors.blue[800]!,
-                  ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 1))),
-                ),
+                Icon(Icons.people_alt, color: Colors.blueGrey[800]),
+                const SizedBox(width: 8),
+                Text('Клиенты', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.blueGrey[900], letterSpacing: 1.2)),
               ],
             ),
-            
-            const SizedBox(height: 32),
-            const Text('Пользователи', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
             const SizedBox(height: 12),
             GridView.count(
               crossAxisCount: 2,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 16,
-              crossAxisSpacing: 16,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 1.1,
               children: [
                 _buildStatCard(
                   context: context,
-                  title: 'Ожидают подтверждения',
-                  icon: Icons.mark_email_unread,
-                  color: Colors.red,
+                  title: 'Ждут одобрения',
+                  icon: Icons.timer,
+                  color: Colors.orange,
                   child: _buildStreamStat(
-                    stream: FirebaseFirestore.instance.collection('clients').where('is_approved', isEqualTo: false).snapshots(),
-                    color: Colors.red[800]!,
+                    stream: FirebaseFirestore.instance.collection('clients').snapshots(),
+                    color: Colors.orange[800]!,
                     filter: (doc) {
                       final data = doc.data() as Map<String, dynamic>;
-                      return data['rejection_reason'] == null;
+                      return data['is_approved'] == false && data['rejection_reason'] == null && data['is_offline'] != true;
                     }
                   ),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(initialTab: 0))),
                 ),
                 _buildStatCard(
                   context: context,
-                  title: 'Активные',
-                  icon: Icons.people,
-                  color: Colors.teal,
+                  title: 'Незарегистрированные',
+                  icon: Icons.person_off,
+                  color: Colors.grey,
                   child: _buildStreamStat(
-                    stream: FirebaseFirestore.instance.collection('clients').where('is_approved', isEqualTo: true).snapshots(),
-                    color: Colors.teal[800]!,
+                    stream: FirebaseFirestore.instance.collection('clients').snapshots(),
+                    color: Colors.grey[800]!,
+                    filter: (doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      return data['is_offline'] == true; // Оффлайн-клиенты
+                    }
                   ),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(initialTab: 1))),
+                ),
+                _buildStatCard(
+                  context: context,
+                  title: 'Зарегистрированные',
+                  icon: Icons.verified_user,
+                  color: Colors.green,
+                  child: _buildStreamStat(
+                    stream: FirebaseFirestore.instance.collection('clients').snapshots(),
+                    color: Colors.green[800]!,
+                    filter: (doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      return data['is_approved'] == true;
+                    }
+                  ),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(initialTab: 1))),
+                ),
+                _buildStatCard(
+                  context: context,
+                  title: 'Отклоненные',
+                  icon: Icons.block,
+                  color: Colors.red,
+                  child: _buildStreamStat(
+                    stream: FirebaseFirestore.instance.collection('clients').snapshots(),
+                    color: Colors.red[800]!,
+                    filter: (doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      return data['is_approved'] == false && data['rejection_reason'] != null;
+                    }
+                  ),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(initialTab: 2))), // В будущем добавим вкладку "Отклоненные"
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 32),
+
+            // ================== БЛОК 2: ЗАКАЗЫ ==================
+            Row(
+              children: [
+                Icon(Icons.home_repair_service, color: Colors.blueGrey[800]),
+                const SizedBox(width: 8),
+                Text('Заказы', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.blueGrey[900], letterSpacing: 1.2)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 1.1,
+              children: [
+                _buildStatCard(
+                  context: context,
+                  title: 'Новые заказы',
+                  icon: Icons.fiber_new,
+                  color: Colors.blue,
+                  child: _buildStreamStat(
+                    stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'new').snapshots(),
+                    color: Colors.blue[800]!,
+                  ),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 0))),
+                ),
+                _buildStatCard(
+                  context: context,
+                  title: 'Ожидают ответа',
+                  icon: Icons.hourglass_empty,
+                  color: Colors.deepPurple,
+                  child: _buildStreamStat(
+                    stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'awaiting_approval').snapshots(),
+                    color: Colors.deepPurple[800]!,
+                  ),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 1))), // В будущем разделим вкладки
+                ),
+                _buildStatCard(
+                  context: context,
+                  title: 'Выполняются',
+                  icon: Icons.build_circle,
+                  color: Colors.orange,
+                  child: _buildStreamStat(
+                    stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'in_progress').snapshots(),
+                    color: Colors.orange[800]!,
+                  ),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 1))),
+                ),
+                _buildStatCard(
+                  context: context,
+                  title: 'Выполненные',
+                  icon: Icons.check_circle,
+                  color: Colors.teal,
+                  child: _buildStreamStat(
+                    stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'completed').snapshots(),
+                    color: Colors.teal[800]!,
+                  ),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 2))), // Вкладка завершенных
                 ),
               ],
             ),
@@ -334,9 +321,4 @@ class DashboardScreen extends StatelessWidget {
       ),
     );
   }
-}
-
-class LinearAppGradient extends LinearGradient {
-  const LinearAppGradient({required List<Color> colors})
-      : super(colors: colors, begin: Alignment.topLeft, end: Alignment.bottomRight);
 }
