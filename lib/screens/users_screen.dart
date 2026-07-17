@@ -8,7 +8,7 @@ class UsersScreen extends StatelessWidget {
   void _approveUser(String docId) {
     FirebaseFirestore.instance.collection('clients').doc(docId).update({
       'is_approved': true,
-      'rejection_reason': null, 
+      'rejection_reason': null,
     });
   }
 
@@ -55,9 +55,7 @@ class UsersScreen extends StatelessWidget {
     );
   }
 
-  // Обновленный метод построения списка с разделением на 4 вкладки
   Widget _buildUsersList(int tabType) {
-    // tabType: 0 - Ожидают, 1 - Оффлайн (Незарегистрированные), 2 - Активные, 3 - Отклоненные
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('clients').snapshots(),
       builder: (context, snapshot) {
@@ -74,10 +72,10 @@ class UsersScreen extends StatelessWidget {
           final isApproved = data['is_approved'] == true;
           final isOffline = data['is_offline'] == true;
 
-          if (tabType == 0) return !isApproved && reason == null && !isOffline; // Ожидают
-          if (tabType == 1) return isOffline; // Оффлайн (Незарегистрированные)
-          if (tabType == 2) return isApproved; // Активные
-          if (tabType == 3) return !isApproved && reason != null; // Отклоненные
+          if (tabType == 0) return !isApproved && reason == null && !isOffline; // Ждут одобрения
+          if (tabType == 1) return isOffline; // Не зарегистрированные (Оффлайн)
+          if (tabType == 2) return isApproved; // Зарегистрированные
+          if (tabType == 3) return !isApproved && reason != null; // Отклонённые
           return false;
         }).toList();
 
@@ -178,7 +176,7 @@ class UsersScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 4, // Теперь 4 вкладки!
+      length: 4, 
       initialIndex: initialTab,
       child: Scaffold(
         backgroundColor: Colors.grey[50],
@@ -190,21 +188,21 @@ class UsersScreen extends StatelessWidget {
             indicatorColor: Colors.white,
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white54,
-            isScrollable: true, // Позволяет вкладкам скроллиться на маленьких экранах
+            isScrollable: true, 
             tabs: [
-              Tab(text: 'Ожидают'),
-              Tab(text: 'Незарегитрированные'),
+              Tab(text: 'Ждут одобрения'),
+              Tab(text: 'Не зарегистрированные'),
               Tab(text: 'Зарегистрированные'),
-              Tab(text: 'Отклоненные'),
+              Tab(text: 'Отклонённые'),
             ],
           ),
         ),
         body: TabBarView(
           children: [
-            _buildUsersList(0), // Ожидают
-            _buildUsersList(1), // Оффлайн
-            _buildUsersList(2), // Активные
-            _buildUsersList(3), // Отклоненные
+            _buildUsersList(0), 
+            _buildUsersList(1), 
+            _buildUsersList(2), 
+            _buildUsersList(3), 
           ],
         ),
       ),
