@@ -186,10 +186,10 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
                         if (int.tryParse(val) == null) return 'Допускаются только цифры';
                         
                         // Строгая проверка кодов Туркменистана
-                        final validCodes = ['60', '61', '62', '63', '64', '65', '71', '72'];
+                        final validCodes = ['61', '62', '63', '64', '65', '71'];
                         final code = val.substring(0, 2);
                         if (!validCodes.contains(code)) {
-                          return 'Неверный код оператора (доступны: 60-65, 71,72)';
+                          return 'Неверный код оператора (доступны: 61-65, 71)';
                         }
                         
                         return null;
@@ -213,7 +213,10 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
                         fillColor: Colors.white,
                       ),
                       hint: const Text('Напр.: Автосервис'),
-                      items: _categoriesMap.keys.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
+                      // ИСПРАВЛЕНИЕ: ЖЕСТКАЯ ТИПИЗАЦИЯ ДЛЯ КОМПИЛЯТОРА
+                      items: _categoriesMap.keys
+                          .map<DropdownMenuItem<String>>((String d) => DropdownMenuItem<String>(value: d, child: Text(d)))
+                          .toList(),
                       onChanged: (val) {
                         setState(() {
                           _selectedDirection = val;
@@ -235,8 +238,9 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
                         fillColor: _selectedDirection == null ? Colors.grey[200] : Colors.white, // Серое, если заблокировано
                       ),
                       hint: const Text('Сначала выберите направление'),
-                      items: (_selectedDirection != null ? _categoriesMap[_selectedDirection]! : [])
-                          .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                      // ИСПРАВЛЕНИЕ: ЖЕСТКАЯ ТИПИЗАЦИЯ ДЛЯ КОМПИЛЯТОРА (<String>[] вместо [])
+                      items: (_selectedDirection != null ? _categoriesMap[_selectedDirection]! : <String>[])
+                          .map<DropdownMenuItem<String>>((String d) => DropdownMenuItem<String>(value: d, child: Text(d)))
                           .toList(),
                       // Блокируем, пока не выбрано первое поле
                       onChanged: _selectedDirection == null ? null : (val) => setState(() => _selectedSubCategory = val),
@@ -276,7 +280,10 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
                         filled: true,
                         fillColor: Colors.white,
                       ),
-                      items: _sources.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+                      // ИСПРАВЛЕНИЕ: ЖЕСТКАЯ ТИПИЗАЦИЯ ДЛЯ КОМПИЛЯТОРА
+                      items: _sources
+                          .map<DropdownMenuItem<String>>((String s) => DropdownMenuItem<String>(value: s, child: Text(s)))
+                          .toList(),
                       onChanged: (val) => setState(() => _selectedSource = val!),
                     ),
                     
@@ -313,3 +320,4 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
     );
   }
 }
+
