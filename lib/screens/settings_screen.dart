@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'categories_management_screen.dart'; // --- ДОБАВЛЕН ИМПОРТ НОВОГО ЭКРАНА ---
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -14,6 +15,20 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
+          // --- НОВАЯ СЕКЦИЯ ДЛЯ УПРАВЛЕНИЯ КОНТЕНТОМ ---
+          _buildSectionHeader('Контент и База'),
+          ListTile(
+            leading: const Icon(Icons.category, color: Colors.blueGrey),
+            title: const Text('Категории устройств'),
+            subtitle: const Text('Управление выпадающим списком'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const CategoriesManagementScreen()));
+            },
+          ),
+          const Divider(),
+          // ---------------------------------------------
+          
           _buildSectionHeader('Основные'),
           SwitchListTile(
             title: const Text('Темная тема'),
@@ -26,6 +41,7 @@ class SettingsScreen extends StatelessWidget {
             },
           ),
           const Divider(),
+          
           _buildSectionHeader('Аккаунт'),
           ListTile(
             leading: const Icon(Icons.admin_panel_settings),
@@ -35,6 +51,7 @@ class SettingsScreen extends StatelessWidget {
             },
           ),
           const Divider(),
+          
           _buildSectionHeader('Система'),
           ListTile(
             leading: const Icon(Icons.info_outline),
@@ -74,4 +91,3 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 }
-
