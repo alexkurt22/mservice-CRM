@@ -1,9 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-class UsersScreen extends StatelessWidget {
+class UsersScreen extends StatefulWidget {
   final int initialTab;
   const UsersScreen({super.key, required this.initialTab});
+
+  @override
+  State<UsersScreen> createState() => _UsersScreenState();
+}
+
+class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 4, vsync: this, initialIndex: widget.initialTab);
+  }
+
+  // ЭТО ИСПРАВЛЯЕТ БАГ: Если экран уже был открыт, обновляем его вкладку
+  @override
+  void didUpdateWidget(covariant UsersScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialTab != widget.initialTab) {
+      _tabController.animateTo(widget.initialTab);
+    }
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   void _approveUser(String docId) {
     FirebaseFirestore.instance.collection('clients').doc(docId).update({
@@ -175,36 +203,34 @@ class UsersScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 4, 
-      initialIndex: initialTab,
-      child: Scaffold(
-        backgroundColor: Colors.grey[50],
-        appBar: AppBar(
-          backgroundColor: Colors.blueGrey[900],
-          foregroundColor: Colors.white,
-          title: const Text('База клиентов'),
-          bottom: const TabBar(
-            indicatorColor: Colors.white,
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white54,
-            isScrollable: true, 
-            tabs: [
-              Tab(text: 'Ждут одобрения'),
-              Tab(text: 'Не зарегистрированные'),
-              Tab(text: 'Зарегистрированные'),
-              Tab(text: 'Отклонённые'),
-            ],
-          ),
-        ),
-        body: TabBarView(
-          children: [
-            _buildUsersList(0), 
-            _buildUsersList(1), 
-            _buildUsersList(2), 
-            _buildUsersList(3), 
+    return Scaffold(
+      backgroundColor: Colors.grey[50],
+      appBar: AppBar(
+        backgroundColor: Colors.blueGrey[900],
+        foregroundColor: Colors.white,
+        title: const Text('База клиентов'),
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: Colors.white,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white54,
+          isScrollable: true, 
+          tabs: const [
+            Tab(text: 'Ждут одобрения'),
+            Tab(text: 'Не зарегистрированные'),
+            Tab(text: 'Зарегистрированные'),
+            Tab(text: 'Отклонённые'),
           ],
         ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildUsersList(0), 
+          _buildUsersList(1), 
+          _buildUsersList(2), 
+          _buildUsersList(3), 
+        ],
       ),
     );
   }
