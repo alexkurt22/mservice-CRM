@@ -18,31 +18,37 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
   final List<String> _sources = ['Instagram', 'TikTok', 'От друзей/знакомых', 'Другое'];
   String _selectedSource = 'Instagram';
 
-  // --- ДИНАМИЧЕСКИЕ КАТЕГОРИИ ---
-  List<String> _deviceTypes = []; 
-  String? _selectedDeviceType; 
-  bool _isLoadingCategories = true; // Загрузка списка категорий из базы
-  bool _isLoading = false; // Загрузка отправки заказа
+  // --- ДИНАМИЧЕСКИЕ КАТЕГОРИИ (АРХИТЕКТУРА СУПЕР-ПРИЛОЖЕНИЯ) ---
+  Map<String, List<String>> _categoriesMap = {}; // Словарь: Направление -> Список услуг
+  String? _selectedDirection; // Выбранное главное направление
+  String? _selectedSubCategory; // Выбранная конкретная услуга/устройство
+  
+  bool _isLoadingCategories = true; 
+  bool _isLoading = false; 
 
   @override
   void initState() {
     super.initState();
-    _loadCategories(); // При открытии экрана сразу скачиваем список
+    _loadCategories(); 
   }
 
-  // Функция скачивания списка категорий
+  // Скачиваем структуру Супер-приложения из базы (categories_v2)
   Future<void> _loadCategories() async {
     try {
-      final doc = await FirebaseFirestore.instance.collection('settings').doc('categories').get();
+      final doc = await FirebaseFirestore.instance.collection('settings').doc('categories_v2').get();
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
-        if (data['devices'] != null && (data['devices'] as List).isNotEmpty) {
-          if (mounted) {
-            setState(() {
-              _deviceTypes = List<String>.from(data['devices']);
-              _isLoadingCategories = false;
-            });
-          }
+        Map<String, List<String>> tempMap = {};
+        
+        data.forEach((key, value) {
+          tempMap[key] = List<String>.from(value as List);
+        });
+
+        if (tempMap.isNotEmpty && mounted) {
+          setState(() {
+            _categoriesMap = tempMap;
+            _isLoadingCategories = false;
+          });
           return;
         }
       }
@@ -50,10 +56,13 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
       debugPrint('Ошибка загрузки категорий: $e');
     }
     
-    // Подстраховка: если база пустая или нет интернета, даем базовый список
+    // Подстраховка на случай отсутствия интернета или пустой базы
     if (mounted) {
       setState(() {
-        _deviceTypes = ['Смартфон', 'Ноутбук', 'Компьютер (ПК)', 'Другое'];
+        _categoriesMap = {
+          'Компьютерный сервис': ['Смартфон', 'Ноутбук', 'Компьютер (ПК)'],
+          'Автосервис': ['Двигатель', 'Ходовая'],
+        };
         _isLoadingCategories = false;
       });
     }
@@ -70,10 +79,12 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
         : _selectedSource;
 
     try {
+      // Сохраняем в заказ и Глобальное направление, и конкретную Услугу!
       await FirebaseFirestore.instance.collection('orders').add({
         'client_name': _nameController.text.trim(),
         'phone': finalPhone, 
-        'device_type': _selectedDeviceType, 
+        'category': _selectedDirection, // Глобальное направление (напр. Автосервис)
+        'device_type': _selectedSubCategory, // Конкретная услуга/устройство (напр. Двигатель)
         'problem': _issueController.text.trim(), 
         'status': 'new', 
         'created_at': FieldValue.serverTimestamp(),
@@ -123,7 +134,6 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
         foregroundColor: Colors.white,
         title: const Text('Новый оффлайн-заказ', style: TextStyle(fontSize: 18)),
       ),
-      // Крутилка загрузки будет крутиться либо пока отправляется заказ, либо пока скачиваются категории
       body: _isLoading || _isLoadingCategories
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
@@ -155,6 +165,7 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
                       validator: (val) => val == null || val.isEmpty ? 'Введите имя' : null,
                     ),
                     const SizedBox(height: 16),
+                    // --- УМНОЕ ПОЛЕ ТЕЛЕФОНА С ПРОВЕРКОЙ КОДА ОПЕРАТОРА ---
                     TextFormField(
                       controller: _phoneController,
                       keyboardType: TextInputType.number,
@@ -173,6 +184,14 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
                         if (val == null || val.isEmpty) return 'Введите номер телефона';
                         if (val.length != 8) return 'Введите ровно 8 цифр (без +993)';
                         if (int.tryParse(val) == null) return 'Допускаются только цифры';
+                        
+                        // Строгая проверка кодов Туркменистана
+                        final validCodes = ['60', '61', '62', '63', '64', '65', '71', '72'];
+                        final code = val.substring(0, 2);
+                        if (!validCodes.contains(code)) {
+                          return 'Неверный код оператора (доступны: 60-65, 71,72)';
+                        }
+                        
                         return null;
                       },
                     ),
@@ -183,26 +202,53 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
                       style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blueGrey, letterSpacing: 1.2),
                     ),
                     const SizedBox(height: 12),
+                    // --- ВЫПАДАЮЩИЙ СПИСОК 1: ГЛОБАЛЬНОЕ НАПРАВЛЕНИЕ ---
                     DropdownButtonFormField<String>(
-                      value: _selectedDeviceType,
+                      value: _selectedDirection,
                       decoration: const InputDecoration(
-                        labelText: 'Тип устройства / Категория',
-                        prefixIcon: Icon(Icons.devices),
+                        labelText: 'Глобальное направление',
+                        prefixIcon: Icon(Icons.business_center),
                         border: OutlineInputBorder(),
                         filled: true,
                         fillColor: Colors.white,
                       ),
-                      hint: const Text('Выберите устройство'),
-                      items: _deviceTypes.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
-                      onChanged: (val) => setState(() => _selectedDeviceType = val),
-                      validator: (val) => val == null ? 'Пожалуйста, выберите тип устройства' : null,
+                      hint: const Text('Напр.: Автосервис'),
+                      items: _categoriesMap.keys.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
+                      onChanged: (val) {
+                        setState(() {
+                          _selectedDirection = val;
+                          _selectedSubCategory = null; // Сбрасываем подкатегорию при смене направления
+                        });
+                      },
+                      validator: (val) => val == null ? 'Пожалуйста, выберите направление' : null,
                     ),
                     const SizedBox(height: 16),
+                    
+                    // --- ВЫПАДАЮЩИЙ СПИСОК 2: ПОДКАТЕГОРИЯ / УСЛУГА ---
+                    DropdownButtonFormField<String>(
+                      value: _selectedSubCategory,
+                      decoration: InputDecoration(
+                        labelText: 'Услуга / Устройство',
+                        prefixIcon: const Icon(Icons.devices),
+                        border: const OutlineInputBorder(),
+                        filled: true,
+                        fillColor: _selectedDirection == null ? Colors.grey[200] : Colors.white, // Серое, если заблокировано
+                      ),
+                      hint: const Text('Сначала выберите направление'),
+                      items: (_selectedDirection != null ? _categoriesMap[_selectedDirection]! : [])
+                          .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                          .toList(),
+                      // Блокируем, пока не выбрано первое поле
+                      onChanged: _selectedDirection == null ? null : (val) => setState(() => _selectedSubCategory = val),
+                      validator: (val) => val == null ? 'Пожалуйста, выберите услугу' : null,
+                    ),
+                    const SizedBox(height: 16),
+                    
                     TextFormField(
                       controller: _issueController,
                       maxLines: 3,
                       decoration: const InputDecoration(
-                        labelText: 'Описание поломки',
+                        labelText: 'Дополнительное описание',
                         alignLabelWithHint: true,
                         prefixIcon: Padding(
                           padding: EdgeInsets.only(bottom: 32.0),
@@ -212,7 +258,7 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
                         filled: true,
                         fillColor: Colors.white,
                       ),
-                      validator: (val) => val == null || val.isEmpty ? 'Введите описание поломки' : null,
+                      validator: (val) => val == null || val.isEmpty ? 'Введите описание поломки/услуги' : null,
                     ),
 
                     const SizedBox(height: 32),
