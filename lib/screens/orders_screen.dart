@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'order_details_screen.dart';
-import 'offline_order_screen.dart'; // Импорт экрана оффлайн-заказов
+import 'offline_order_screen.dart'; 
 
 class OrdersScreen extends StatefulWidget {
   final int initialTab;
@@ -18,15 +18,21 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    // Инициализируем строго 4 вкладки по твоей структуре
     _tabController = TabController(length: 4, vsync: this, initialIndex: widget.initialTab);
-    
-    // Слушатель для мгновенной перерисовки FAB при переключении вкладок свайпом
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
         setState(() {});
       }
     });
+  }
+  
+  // ЭТО ИСПРАВЛЯЕТ БАГ: Если экран уже был открыт, обновляем его вкладку
+  @override
+  void didUpdateWidget(covariant OrdersScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialTab != widget.initialTab) {
+      _tabController.animateTo(widget.initialTab);
+    }
   }
 
   @override
@@ -35,7 +41,6 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
     super.dispose();
   }
 
-  // Универсальный метод построения списков с гарантированной защитой от кнопок телефона
   Widget _buildOrdersList(String statusKey) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -63,8 +68,6 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
         }
 
         final docs = snapshot.data!.docs.toList();
-        
-        // Новые сверху
         docs.sort((a, b) {
           final aData = a.data() as Map<String, dynamic>;
           final bData = b.data() as Map<String, dynamic>;
@@ -77,7 +80,6 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
         });
 
         return ListView.builder(
-          // ❗ ПРАВИЛО ОТСТУПОВ: Системный нижний бар телефона + высота FAB + запас, чтобы списки прокручивались идеально
           padding: EdgeInsets.only(
             top: 12.0,
             left: 12.0,
@@ -92,7 +94,6 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
             final deviceType = data['device_type'] ?? 'Устройство';
             final currentStatus = data['status'] ?? 'new';
             
-            // Цветовая палитра под твои статусы
             Color iconColor = Colors.orange;
             IconData statusIcon = Icons.new_releases;
             
@@ -133,7 +134,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                       const SizedBox(width: 16),
                       Expanded(
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start, // ❗ ИСПРАВЛЕНА ОПЕЧАТКА ЗДЕСЬ
+                          crossAxisAlignment: CrossAxisAlignment.start, 
                           children: [
                             Text(clientName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
                             const SizedBox(height: 4),
@@ -173,19 +174,17 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
           indicatorColor: Colors.white,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white54,
-          isScrollable: true, // Позволяет вкладкам корректно умещаться на экранах телефонов
+          isScrollable: true, 
           tabs: const [
             Tab(text: 'Новые заказы'),
-            Tab(text: 'Ожидают ответа клиента'), // Чёткое и понятное название
+            Tab(text: 'Ожидают ответа клиента'), 
             Tab(text: 'Выполняются'),
             Tab(text: 'Выполненные'),
           ],
         ),
       ),
-      // ❗ КНОПКА ПЛЮСИК: Видна и кликабельна только на 3-й вкладке «Выполняются» (индекс 2)
       floatingActionButton: _tabController.index == 2
           ? Padding(
-              // ❗ ЗАЩИТНЫЙ ОТСТУП: Поднимает плюсик строго над системным баром Android/iOS
               padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 8.0),
               child: FloatingActionButton(
                 onPressed: () {
@@ -203,10 +202,10 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildOrdersList('new'),               // Вкладка 0: Новые заказы
-          _buildOrdersList('awaiting_approval'), // Вкладка 1: Ожидают ответа клиента
-          _buildOrdersList('in_progress'),       // Вкладка 2: Выполняются (с FAB плюсиком)
-          _buildOrdersList('completed'),          // Вкладка 3: Выполненные
+          _buildOrdersList('new'),               
+          _buildOrdersList('awaiting_approval'), 
+          _buildOrdersList('in_progress'),       
+          _buildOrdersList('completed'),          
         ],
       ),
     );
