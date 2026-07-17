@@ -15,31 +15,61 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
   final TextEditingController _issueController = TextEditingController();
   final TextEditingController _otherSourceController = TextEditingController();
 
-  // Маркетинговые источники
   final List<String> _sources = ['Instagram', 'TikTok', 'От друзей/знакомых', 'Другое'];
   String _selectedSource = 'Instagram';
 
-  // Категории устройств (как в клиентском приложении!)
-  final List<String> _deviceTypes = ['Ноутбук', 'Компьютер (ПК)', 'Планшет', 'Принтер', 'Другое'];
-  String? _selectedDeviceType; // null, чтобы заставить выбрать из списка
+  // --- ДИНАМИЧЕСКИЕ КАТЕГОРИИ ---
+  List<String> _deviceTypes = []; 
+  String? _selectedDeviceType; 
+  bool _isLoadingCategories = true; // Загрузка списка категорий из базы
+  bool _isLoading = false; // Загрузка отправки заказа
 
-  bool _isLoading = false;
+  @override
+  void initState() {
+    super.initState();
+    _loadCategories(); // При открытии экрана сразу скачиваем список
+  }
+
+  // Функция скачивания списка категорий
+  Future<void> _loadCategories() async {
+    try {
+      final doc = await FirebaseFirestore.instance.collection('settings').doc('categories').get();
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data()!;
+        if (data['devices'] != null && (data['devices'] as List).isNotEmpty) {
+          if (mounted) {
+            setState(() {
+              _deviceTypes = List<String>.from(data['devices']);
+              _isLoadingCategories = false;
+            });
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('Ошибка загрузки категорий: $e');
+    }
+    
+    // Подстраховка: если база пустая или нет интернета, даем базовый список
+    if (mounted) {
+      setState(() {
+        _deviceTypes = ['Смартфон', 'Ноутбук', 'Компьютер (ПК)', 'Другое'];
+        _isLoadingCategories = false;
+      });
+    }
+  }
 
   Future<void> _submitOrder() async {
     if (!_formKey.currentState!.validate()) return;
     
     setState(() => _isLoading = true);
     
-    // Формируем финальный номер
     String finalPhone = '+993${_phoneController.text.trim()}';
-
-    // Если выбрано "Другое", берем текст из поля ввода
     String finalSource = _selectedSource == 'Другое' 
         ? _otherSourceController.text.trim() 
         : _selectedSource;
 
     try {
-      // 1. Создаем сам заказ (Ключи строго синхронизированы с клиентским приложением!)
       await FirebaseFirestore.instance.collection('orders').add({
         'client_name': _nameController.text.trim(),
         'phone': finalPhone, 
@@ -51,13 +81,11 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
         'is_offline': true, 
       });
 
-      // 2. Проверяем, есть ли такой клиент в базе (ищем по полному номеру телефона)
       final clientQuery = await FirebaseFirestore.instance
           .collection('clients')
           .where('phone', isEqualTo: finalPhone)
           .get();
       
-      // Если клиента нет, создаем "заглушку". 
       if (clientQuery.docs.isEmpty) {
          await FirebaseFirestore.instance.collection('clients').add({
             'name': _nameController.text.trim(),
@@ -73,7 +101,7 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Оффлайн-заказ успешно создан!'), backgroundColor: Colors.green),
         );
-        Navigator.pop(context); // Возвращаемся на Дашборд
+        Navigator.pop(context); 
       }
     } catch (e) {
        if (mounted) {
@@ -95,7 +123,8 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
         foregroundColor: Colors.white,
         title: const Text('Новый оффлайн-заказ', style: TextStyle(fontSize: 18)),
       ),
-      body: _isLoading
+      // Крутилка загрузки будет крутиться либо пока отправляется заказ, либо пока скачиваются категории
+      body: _isLoading || _isLoadingCategories
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               padding: EdgeInsets.only(
@@ -126,25 +155,23 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
                       validator: (val) => val == null || val.isEmpty ? 'Введите имя' : null,
                     ),
                     const SizedBox(height: 16),
-                    // --- УМНОЕ ПОЛЕ ТЕЛЕФОНА С МАСКОЙ ---
                     TextFormField(
                       controller: _phoneController,
                       keyboardType: TextInputType.number,
-                      maxLength: 8, // Строго 8 цифр
+                      maxLength: 8,
                       decoration: const InputDecoration(
                         labelText: 'Номер телефона',
-                        prefixText: '+993 ', // Нестираемый префикс
+                        prefixText: '+993 ', 
                         prefixStyle: TextStyle(fontSize: 16, color: Colors.black87, fontWeight: FontWeight.bold),
                         prefixIcon: Icon(Icons.phone),
                         border: OutlineInputBorder(),
                         filled: true,
                         fillColor: Colors.white,
-                        counterText: "", // Скрываем счетчик 0/8 под полем
+                        counterText: "", 
                       ),
                       validator: (val) {
                         if (val == null || val.isEmpty) return 'Введите номер телефона';
                         if (val.length != 8) return 'Введите ровно 8 цифр (без +993)';
-                        // Проверка, что введены только цифры
                         if (int.tryParse(val) == null) return 'Допускаются только цифры';
                         return null;
                       },
@@ -156,7 +183,6 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
                       style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blueGrey, letterSpacing: 1.2),
                     ),
                     const SizedBox(height: 12),
-                    // --- ВЫПАДАЮЩИЙ СПИСОК (КАК У КЛИЕНТА) ---
                     DropdownButtonFormField<String>(
                       value: _selectedDeviceType,
                       decoration: const InputDecoration(
