@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'private_chat_screen.dart'; // Подключаем экран переписки
 
 class UsersScreen extends StatefulWidget {
   final int initialTab;
@@ -18,7 +20,6 @@ class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStat
     _tabController = TabController(length: 4, vsync: this, initialIndex: widget.initialTab);
   }
 
-  // ЭТО ИСПРАВЛЯЕТ БАГ: Если экран уже был открыт, обновляем его вкладку
   @override
   void didUpdateWidget(covariant UsersScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -83,6 +84,38 @@ class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStat
     );
   }
 
+  // --- ЛОГИКА СОЗДАНИЯ ИЛИ ОТКРЫТИЯ ЧАТА С КЛИЕНТОМ ---
+  Future<void> _openPrivateChat(BuildContext context, String targetPhone, String targetName) async {
+    final prefs = await SharedPreferences.getInstance();
+    final myPhone = prefs.getString('employee_phone') ?? 'admin';
+
+    // Формируем уникальный ID комнаты (сортируем номера, чтобы ID был одинаков для обоих)
+    List<String> participants = [myPhone, targetPhone];
+    participants.sort();
+    String roomId = 'private_${participants[0]}_${participants[1]}';
+
+    final roomRef = FirebaseFirestore.instance.collection('chat_rooms').doc(roomId);
+    final doc = await roomRef.get();
+
+    // Если комнаты еще нет — создаем её в базе
+    if (!doc.exists) {
+      await roomRef.set({
+        'type': 'private',
+        'participants': participants,
+        'created_at': FieldValue.serverTimestamp(),
+        'last_message': 'Чат создан',
+        'last_message_time': FieldValue.serverTimestamp(),
+      });
+    }
+
+    // Открываем экран переписки
+    if (context.mounted) {
+      Navigator.push(context, MaterialPageRoute(
+        builder: (_) => PrivateChatScreen(roomId: roomId, targetName: targetName)
+      ));
+    }
+  }
+
   Widget _buildUsersList(int tabType) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('clients').snapshots(),
@@ -119,7 +152,7 @@ class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStat
         }
 
         return ListView.builder(
-          padding: const EdgeInsets.all(12),
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 20, top: 12, left: 12, right: 12),
           itemCount: docs.length,
           itemBuilder: (context, index) {
             final doc = docs[index];
@@ -129,6 +162,34 @@ class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStat
             final isRejected = tabType == 3;
             final isActive = tabType == 2;
             final phone = data['phone'] ?? '';
+            final name = data['name'] ?? 'Без имени';
+
+            // ОПРЕДЕЛЯЕМ КНОПКИ СПРАВА
+            Widget? trailingWidget;
+            if (isPending) {
+              trailingWidget = Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.check_circle, color: Colors.green, size: 32),
+                    onPressed: () => _approveUser(doc.id),
+                    tooltip: 'Одобрить',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.cancel, color: Colors.red, size: 32),
+                    onPressed: () => _rejectUser(context, doc.id),
+                    tooltip: 'Отклонить',
+                  ),
+                ],
+              );
+            } else if (isActive && phone.isNotEmpty) {
+              // ❗ КНОПКА ЧАТА ДЛЯ ЗАРЕГИСТРИРОВАННЫХ КЛИЕНТОВ ❗
+              trailingWidget = IconButton(
+                icon: const Icon(Icons.chat, color: Colors.blue, size: 28),
+                onPressed: () => _openPrivateChat(context, phone, name),
+                tooltip: 'Написать сообщение',
+              );
+            }
 
             return Card(
               elevation: 2,
@@ -144,7 +205,7 @@ class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStat
                       color: isActive ? Colors.green[700] : (isRejected ? Colors.red[700] : Colors.orange[700]),
                     ),
                   ),
-                  title: Text(data['name'] ?? 'Без имени', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   subtitle: Padding(
                     padding: const EdgeInsets.only(top: 8.0),
                     child: Column(
@@ -177,21 +238,7 @@ class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStat
                       ],
                     ),
                   ),
-                  trailing: isPending ? Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.check_circle, color: Colors.green, size: 32),
-                        onPressed: () => _approveUser(doc.id),
-                        tooltip: 'Одобрить',
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.cancel, color: Colors.red, size: 32),
-                        onPressed: () => _rejectUser(context, doc.id),
-                        tooltip: 'Отклонить',
-                      ),
-                    ],
-                  ) : null,
+                  trailing: trailingWidget,
                 ),
               ),
             );
