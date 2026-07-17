@@ -133,7 +133,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                       const SizedBox(width: 16),
                       Expanded(
                         child: Column(
-                          cross CrossAxisAlignment: CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.start, // ❗ ИСПРАВЛЕНА ОПЕЧАТКА ЗДЕСЬ
                           children: [
                             Text(clientName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
                             const SizedBox(height: 4),
