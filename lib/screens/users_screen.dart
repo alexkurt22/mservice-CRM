@@ -8,7 +8,7 @@ class UsersScreen extends StatelessWidget {
   void _approveUser(String docId) {
     FirebaseFirestore.instance.collection('clients').doc(docId).update({
       'is_approved': true,
-      'rejection_reason': null, // Очищаем причину, если вдруг одобряем после отказа
+      'rejection_reason': null, 
     });
   }
 
@@ -55,13 +55,11 @@ class UsersScreen extends StatelessWidget {
     );
   }
 
-  // Универсальный метод построения списка для каждой вкладки
-  Widget _buildUsersList(bool isApproved, bool isRejected) {
+  // Обновленный метод построения списка с разделением на 4 вкладки
+  Widget _buildUsersList(int tabType) {
+    // tabType: 0 - Ожидают, 1 - Оффлайн (Незарегистрированные), 2 - Активные, 3 - Отклоненные
     return StreamBuilder<QuerySnapshot>(
-      // Сначала забираем все документы по флагу is_approved, чтобы не перегружать базу сложными индексами
-      stream: FirebaseFirestore.instance.collection('clients')
-          .where('is_approved', isEqualTo: isApproved)
-          .snapshots(),
+      stream: FirebaseFirestore.instance.collection('clients').snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -70,16 +68,19 @@ class UsersScreen extends StatelessWidget {
           return Center(child: Text('Пусто', style: TextStyle(color: Colors.blueGrey[400], fontSize: 16)));
         }
 
-        // Фильтруем данные в зависимости от того, какая вкладка открыта
         var docs = snapshot.data!.docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
           final reason = data['rejection_reason'];
-          if (isApproved) return true; // Вкладка "Активные"
-          if (isRejected) return reason != null; // Вкладка "Отклонены"
-          return reason == null; // Вкладка "Ожидают"
+          final isApproved = data['is_approved'] == true;
+          final isOffline = data['is_offline'] == true;
+
+          if (tabType == 0) return !isApproved && reason == null && !isOffline; // Ожидают
+          if (tabType == 1) return isOffline; // Оффлайн (Незарегистрированные)
+          if (tabType == 2) return isApproved; // Активные
+          if (tabType == 3) return !isApproved && reason != null; // Отклоненные
+          return false;
         }).toList();
 
-        // Сортируем по дате создания (новые сверху)
         docs.sort((a, b) {
           final aTime = (a.data() as Map<String, dynamic>)['created_at'] as Timestamp?;
           final bTime = (b.data() as Map<String, dynamic>)['created_at'] as Timestamp?;
@@ -98,7 +99,10 @@ class UsersScreen extends StatelessWidget {
             final doc = docs[index];
             final data = doc.data() as Map<String, dynamic>;
             
-            final isPending = !isApproved && !isRejected;
+            final isPending = tabType == 0;
+            final isRejected = tabType == 3;
+            final isActive = tabType == 2;
+            final phone = data['phone'] ?? '';
 
             return Card(
               elevation: 2,
@@ -108,10 +112,10 @@ class UsersScreen extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 8.0),
                 child: ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: isApproved ? Colors.green[100] : (isRejected ? Colors.red[100] : Colors.orange[100]),
+                    backgroundColor: isActive ? Colors.green[100] : (isRejected ? Colors.red[100] : Colors.orange[100]),
                     child: Icon(
-                      isApproved ? Icons.person : (isRejected ? Icons.person_off : Icons.person_add),
-                      color: isApproved ? Colors.green[700] : (isRejected ? Colors.red[700] : Colors.orange[700]),
+                      isActive ? Icons.person : (isRejected ? Icons.person_off : Icons.person_add),
+                      color: isActive ? Colors.green[700] : (isRejected ? Colors.red[700] : Colors.orange[700]),
                     ),
                   ),
                   title: Text(data['name'] ?? 'Без имени', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
@@ -124,7 +128,7 @@ class UsersScreen extends StatelessWidget {
                           children: [
                             const Icon(Icons.phone, size: 16, color: Colors.blueGrey),
                             const SizedBox(width: 6),
-                            Text(data['phone'] ?? '', style: const TextStyle(color: Colors.black87, fontSize: 14)),
+                            Text(phone, style: const TextStyle(color: Colors.black87, fontSize: 14)),
                           ],
                         ),
                         const SizedBox(height: 6),
@@ -174,30 +178,33 @@ class UsersScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3,
+      length: 4, // Теперь 4 вкладки!
       initialIndex: initialTab,
       child: Scaffold(
         backgroundColor: Colors.grey[50],
         appBar: AppBar(
           backgroundColor: Colors.blueGrey[900],
           foregroundColor: Colors.white,
-          title: const Text('Пользователи'),
+          title: const Text('База клиентов'),
           bottom: const TabBar(
             indicatorColor: Colors.white,
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white54,
+            isScrollable: true, // Позволяет вкладкам скроллиться на маленьких экранах
             tabs: [
               Tab(text: 'Ожидают'),
-              Tab(text: 'Активные'),
-              Tab(text: 'Отклонены'),
+              Tab(text: 'Незарегитрированные'),
+              Tab(text: 'Зарегистрированные'),
+              Tab(text: 'Отклоненные'),
             ],
           ),
         ),
         body: TabBarView(
           children: [
-            _buildUsersList(false, false), // Ожидают (isApproved: false, isRejected: false)
-            _buildUsersList(true, false),  // Активные
-            _buildUsersList(false, true),  // Отклонены
+            _buildUsersList(0), // Ожидают
+            _buildUsersList(1), // Оффлайн
+            _buildUsersList(2), // Активные
+            _buildUsersList(3), // Отклоненные
           ],
         ),
       ),
