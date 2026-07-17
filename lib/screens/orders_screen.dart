@@ -1,16 +1,47 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'order_details_screen.dart';
-import 'offline_order_screen.dart'; // Импорт для создания оффлайн-заказов
+import 'offline_order_screen.dart'; // Импорт экрана оффлайн-заказов
 
-class OrdersScreen extends StatelessWidget {
+class OrdersScreen extends StatefulWidget {
   final int initialTab;
 
   const OrdersScreen({super.key, this.initialTab = 0});
 
-  Widget _buildOrdersList(Query query) {
+  @override
+  State<OrdersScreen> createState() => _OrdersScreenState();
+}
+
+class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    // Инициализируем строго 4 вкладки по твоей структуре
+    _tabController = TabController(length: 4, vsync: this, initialIndex: widget.initialTab);
+    
+    // Слушатель для мгновенной перерисовки FAB при переключении вкладок свайпом
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        setState(() {});
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  // Универсальный метод построения списков с гарантированной защитой от кнопок телефона
+  Widget _buildOrdersList(String statusKey) {
     return StreamBuilder<QuerySnapshot>(
-      stream: query.snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('orders')
+          .where('status', isEqualTo: statusKey)
+          .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -32,6 +63,8 @@ class OrdersScreen extends StatelessWidget {
         }
 
         final docs = snapshot.data!.docs.toList();
+        
+        // Новые сверху
         docs.sort((a, b) {
           final aData = a.data() as Map<String, dynamic>;
           final bData = b.data() as Map<String, dynamic>;
@@ -40,27 +73,39 @@ class OrdersScreen extends StatelessWidget {
           if (aTime == null && bTime == null) return 0;
           if (aTime == null) return 1;
           if (bTime == null) return -1;
-          return bTime.compareTo(aTime); // Новые сверху
+          return bTime.compareTo(aTime);
         });
 
         return ListView.builder(
-          padding: const EdgeInsets.only(top: 12.0, left: 12.0, right: 12.0, bottom: 80.0), // Отступ снизу для кнопки
+          // ❗ ПРАВИЛО ОТСТУПОВ: Системный нижний бар телефона + высота FAB + запас, чтобы списки прокручивались идеально
+          padding: EdgeInsets.only(
+            top: 12.0,
+            left: 12.0,
+            right: 12.0,
+            bottom: MediaQuery.of(context).padding.bottom + 96.0,
+          ),
           itemCount: docs.length,
           itemBuilder: (context, index) {
             final doc = docs[index];
             final data = doc.data() as Map<String, dynamic>;
             final clientName = data['client_name'] ?? 'Неизвестный клиент';
             final deviceType = data['device_type'] ?? 'Устройство';
-            final status = data['status'] ?? 'new';
+            final currentStatus = data['status'] ?? 'new';
             
-            // Определяем цвет иконки по статусу
+            // Цветовая палитра под твои статусы
             Color iconColor = Colors.orange;
             IconData statusIcon = Icons.new_releases;
             
-            if (status == 'awaiting_approval') { iconColor = Colors.deepPurple; statusIcon = Icons.hourglass_empty; }
-            else if (status == 'in_progress') { iconColor = Colors.orange; statusIcon = Icons.build_circle; }
-            else if (status == 'completed') { iconColor = Colors.teal; statusIcon = Icons.check_circle; }
-            else if (status == 'canceled') { iconColor = Colors.red; statusIcon = Icons.cancel; }
+            if (currentStatus == 'awaiting_approval') {
+              iconColor = Colors.deepPurple;
+              statusIcon = Icons.hourglass_empty;
+            } else if (currentStatus == 'in_progress') {
+              iconColor = Colors.orange;
+              statusIcon = Icons.build_circle;
+            } else if (currentStatus == 'completed') {
+              iconColor = Colors.teal;
+              statusIcon = Icons.check_circle;
+            }
 
             return Card(
               elevation: 2,
@@ -88,7 +133,7 @@ class OrdersScreen extends StatelessWidget {
                       const SizedBox(width: 16),
                       Expanded(
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          cross CrossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(clientName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
                             const SizedBox(height: 4),
@@ -117,74 +162,52 @@ class OrdersScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 4, // 4 статуса заказа
-      initialIndex: initialTab,
-      child: Scaffold(
-        backgroundColor: Colors.grey[50],
-        appBar: AppBar(
-          backgroundColor: Colors.blueGrey[900],
-          foregroundColor: Colors.white,
-          title: const Text('Заказы'),
-          bottom: const TabBar(
-            indicatorColor: Colors.white,
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white54,
-            isScrollable: true, // Вкладки можно листать вправо-влево
-            tabs: [
-              Tab(text: 'Новые'),
-              Tab(text: 'Ожидают'),
-              Tab(text: 'В работе'),
-              Tab(text: 'Выполнены'),
-            ],
-          ),
-        ),
-        body: Stack(
-          children: [
-            TabBarView(
-              children: [
-                _buildOrdersList(FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'new')),
-                _buildOrdersList(FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'awaiting_approval')),
-                _buildOrdersList(FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'in_progress')),
-                _buildOrdersList(FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'completed')),
-              ],
-            ),
-            
-            // --- УМНАЯ КНОПКА ДОБАВЛЕНИЯ ЗАКАЗА ---
-            // Она появляется только на вкладке "В работе" (индекс 2)
-            Builder(
-              builder: (ctx) {
-                final TabController tabController = DefaultTabController.of(ctx);
-                return AnimatedBuilder(
-                  animation: tabController.animation!,
-                  builder: (context, child) {
-                    // Показывать кнопку, если выбрана 3-я вкладка (индекс 2 - "В работе")
-                    final bool isWorkingTab = tabController.index == 2;
-                    return Positioned(
-                      bottom: 16.0,
-                      right: 16.0,
-                      child: AnimatedOpacity(
-                        opacity: isWorkingTab ? 1.0 : 0.0,
-                        duration: const Duration(milliseconds: 200),
-                        child: IgnorePointer(
-                          ignoring: !isWorkingTab,
-                          child: FloatingActionButton(
-                            onPressed: () {
-                              Navigator.push(context, MaterialPageRoute(builder: (_) => const OfflineOrderScreen()));
-                            },
-                            backgroundColor: Colors.orange[600],
-                            tooltip: 'Добавить заказ в работу',
-                            child: const Icon(Icons.add, color: Colors.white, size: 28),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
+    return Scaffold(
+      backgroundColor: Colors.grey[50],
+      appBar: AppBar(
+        backgroundColor: Colors.blueGrey[900],
+        foregroundColor: Colors.white,
+        title: const Text('Заказы Центр'),
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: Colors.white,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white54,
+          isScrollable: true, // Позволяет вкладкам корректно умещаться на экранах телефонов
+          tabs: const [
+            Tab(text: 'Новые заказы'),
+            Tab(text: 'Ожидают ответа клиента'), // Чёткое и понятное название
+            Tab(text: 'Выполняются'),
+            Tab(text: 'Выполненные'),
           ],
         ),
+      ),
+      // ❗ КНОПКА ПЛЮСИК: Видна и кликабельна только на 3-й вкладке «Выполняются» (индекс 2)
+      floatingActionButton: _tabController.index == 2
+          ? Padding(
+              // ❗ ЗАЩИТНЫЙ ОТСТУП: Поднимает плюсик строго над системным баром Android/iOS
+              padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 8.0),
+              child: FloatingActionButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const OfflineOrderScreen()),
+                  );
+                },
+                backgroundColor: Colors.orange[600],
+                tooltip: 'Ручной ввод заказа',
+                child: const Icon(Icons.add, color: Colors.white, size: 28),
+              ),
+            )
+          : null,
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildOrdersList('new'),               // Вкладка 0: Новые заказы
+          _buildOrdersList('awaiting_approval'), // Вкладка 1: Ожидают ответа клиента
+          _buildOrdersList('in_progress'),       // Вкладка 2: Выполняются (с FAB плюсиком)
+          _buildOrdersList('completed'),          // Вкладка 3: Выполненные
+        ],
       ),
     );
   }
