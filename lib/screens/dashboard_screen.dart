@@ -184,7 +184,6 @@ class DashboardScreen extends StatelessWidget {
               crossAxisSpacing: 12,
               childAspectRatio: 1.1,
               children: [
-                // Индекс 0: Ждут одобрения
                 _buildStatCard(
                   context: context,
                   title: 'Ждут одобрения',
@@ -200,7 +199,6 @@ class DashboardScreen extends StatelessWidget {
                   ),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(initialTab: 0))),
                 ),
-                // Индекс 1: Незарегистрированные (Оффлайн)
                 _buildStatCard(
                   context: context,
                   title: 'Незарегистрированные',
@@ -216,7 +214,6 @@ class DashboardScreen extends StatelessWidget {
                   ),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(initialTab: 1))),
                 ),
-                // Индекс 2: Зарегистрированные (Активные)
                 _buildStatCard(
                   context: context,
                   title: 'Зарегистрированные',
@@ -232,7 +229,6 @@ class DashboardScreen extends StatelessWidget {
                   ),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(initialTab: 2))),
                 ),
-                // Индекс 3: Отклоненные
                 _buildStatCard(
                   context: context,
                   title: 'Отклоненные',
@@ -270,7 +266,6 @@ class DashboardScreen extends StatelessWidget {
               crossAxisSpacing: 12,
               childAspectRatio: 1.1,
               children: [
-                // Индекс 0: Новые заказы
                 _buildStatCard(
                   context: context,
                   title: 'Новые заказы',
@@ -282,7 +277,6 @@ class DashboardScreen extends StatelessWidget {
                   ),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 0))),
                 ),
-                // Индекс 1: Ожидают ответа клиента
                 _buildStatCard(
                   context: context,
                   title: 'Ожидают ответа',
@@ -294,7 +288,6 @@ class DashboardScreen extends StatelessWidget {
                   ),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 1))),
                 ),
-                // Индекс 2: Выполняются
                 _buildStatCard(
                   context: context,
                   title: 'Выполняются',
@@ -306,7 +299,6 @@ class DashboardScreen extends StatelessWidget {
                   ),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 2))),
                 ),
-                // Индекс 3: Выполненные
                 _buildStatCard(
                   context: context,
                   title: 'Выполненные',
@@ -327,4 +319,3 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 }
-
