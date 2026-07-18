@@ -40,12 +40,12 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       'is_read': false,
     });
     
-    // ❗ ОТПРАВЛЯЕМ СИГНАЛ КЛИЕНТУ: Включаем ему звук и красный кружок
+    // ❗ ПРИБАВЛЯЕМ +1 К СЧЕТЧИКУ КЛИЕНТА
     await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({
       'last_message': text,
       'last_message_time': FieldValue.serverTimestamp(),
-      'has_unread': true, // Триггер для бейджика
-      'last_sender': 'admin', // Клиент поймет, что это написали мы
+      'unread_count': FieldValue.increment(1), 
+      'last_sender': 'admin',
     });
   }
 
@@ -78,13 +78,11 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                     final Timestamp? ts = data['created_at'] as Timestamp?;
                     final DateTime dt = ts?.toDate() ?? DateTime.now();
                     
-                    // ❗ АДМИН ПРОЧИТАЛ СООБЩЕНИЕ: 
-                    // 1. Делаем галочки клиента синими
-                    // 2. Убираем свой собственный красный кружок
+                    // ❗ АДМИН ЧИТАЕТ -> СБРАСЫВАЕТ СЧЕТЧИК
                     if (!isMe && data['is_read'] == false) {
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         messages[i].reference.update({'is_read': true});
-                        FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({'has_unread': false});
+                        FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({'unread_count': 0});
                       });
                     }
 
