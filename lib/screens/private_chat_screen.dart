@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:intl/intl.dart'; 
+import 'package:intl/intl.dart';
 
 class PrivateChatScreen extends StatefulWidget {
   final String roomId;
@@ -25,7 +25,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
   Future<void> _getMyPhone() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() => _myPhone = prefs.getString('employee_phone'));
+    setState(() => _myPhone = prefs.getString('employee_phone') ?? 'admin');
   }
 
   Future<void> _sendMessage() async {
@@ -40,21 +40,19 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       'is_read': false,
     });
     
-    // Обновляем последнее сообщение для списка чатов
+    // ❗ ОТПРАВЛЯЕМ СИГНАЛ КЛИЕНТУ: Включаем ему звук и красный кружок
     await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({
       'last_message': text,
       'last_message_time': FieldValue.serverTimestamp(),
+      'has_unread': true, // Триггер для бейджика
+      'last_sender': 'admin', // Клиент поймет, что это написали мы
     });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.targetName), 
-        backgroundColor: Colors.blueGrey[900], 
-        foregroundColor: Colors.white
-      ),
+      appBar: AppBar(title: Text(widget.targetName), backgroundColor: Colors.blueGrey[900], foregroundColor: Colors.white),
       body: Column(
         children: [
           Expanded(
@@ -72,10 +70,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 
                 return ListView.builder(
                   reverse: true,
-                  padding: EdgeInsets.only(
-                    top: 10,
-                    bottom: MediaQuery.of(context).padding.bottom + 80.0
-                  ),
+                  padding: EdgeInsets.only(top: 10, bottom: MediaQuery.of(context).padding.bottom + 80.0),
                   itemCount: messages.length,
                   itemBuilder: (ctx, i) {
                     final data = messages[i].data() as Map<String, dynamic>;
@@ -83,7 +78,16 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                     final Timestamp? ts = data['created_at'] as Timestamp?;
                     final DateTime dt = ts?.toDate() ?? DateTime.now();
                     
-                    // Проверка на смену дня
+                    // ❗ АДМИН ПРОЧИТАЛ СООБЩЕНИЕ: 
+                    // 1. Делаем галочки клиента синими
+                    // 2. Убираем свой собственный красный кружок
+                    if (!isMe && data['is_read'] == false) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        messages[i].reference.update({'is_read': true});
+                        FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({'has_unread': false});
+                      });
+                    }
+
                     bool showDate = false;
                     if (i == messages.length - 1) {
                       showDate = true;
@@ -121,7 +125,11 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                                     Text(DateFormat('HH:mm').format(dt), style: const TextStyle(fontSize: 10, color: Colors.grey)),
                                     if (isMe) ...[
                                       const SizedBox(width: 4),
-                                      Icon(Icons.done_all, size: 14, color: data['is_read'] == true ? Colors.blue : Colors.grey),
+                                      Icon(
+                                        data['is_read'] == true ? Icons.done_all : Icons.check, 
+                                        size: 14, 
+                                        color: data['is_read'] == true ? Colors.blue : Colors.grey
+                                      ),
                                     ]
                                   ],
                                 ),
@@ -136,7 +144,6 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
               },
             ),
           ),
-          // ❗ ЗАЩИТНЫЙ ОТСТУП СНИЗУ ДЛЯ ПОЛЯ ВВОДА
           SafeArea(
             top: false,
             child: Padding(
