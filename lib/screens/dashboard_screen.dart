@@ -1,10 +1,10 @@
-import 'chat_lists_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'users_screen.dart';
 import 'orders_screen.dart';
 import 'database_cleanup_screen.dart'; 
 import 'settings_screen.dart';
+import 'chat_lists_screen.dart'; // ❗ ВОТ ОН, ПРАВИЛЬНЫЙ ИМПОРТ НАШИХ СПИСКОВ ЧАТОВ
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -156,27 +156,25 @@ class DashboardScreen extends StatelessWidget {
       drawer: _buildDrawer(context), 
       
       // ==========================================
-      // НОВЫЙ БЛОК ЧАТОВ (ДВЕ КНОПКИ ДРУГ НАД ДРУГОМ)
+      // БЛОК ЧАТОВ (КНОПКИ ТЕПЕРЬ ВЕДУТ В РЕАЛЬНЫЕ СПИСКИ)
       // ==========================================
       floatingActionButton: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          // 1. Чат с клиентами
           FloatingActionButton.extended(
             heroTag: 'client_chat_btn',
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ClientChatsListScreen())),
             backgroundColor: Colors.blue[700],
             icon: Badge(
-              label: const Text('0'), // Заглушка, позже привяжем к базе
+              label: const Text('0'), 
               backgroundColor: Colors.red,
-              isLabelVisible: false, // Пока скроем, включим когда будет база
+              isLabelVisible: false, 
               child: const Icon(Icons.support_agent, color: Colors.white),
             ),
             label: const Text('Чаты с клиентами', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
           const SizedBox(height: 16),
-          // 2. Чат команды (Сотрудники)
           FloatingActionButton.extended(
             heroTag: 'team_chat_btn',
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TeamChatsListScreen())),
@@ -193,7 +191,6 @@ class DashboardScreen extends StatelessWidget {
       ),
 
       body: SingleChildScrollView(
-        // Увеличен отступ снизу (140), чтобы две кнопки не перекрывали контент
         padding: EdgeInsets.only(
           left: 16.0, right: 16.0, top: 16.0, 
           bottom: MediaQuery.of(context).padding.bottom + 140.0
@@ -353,30 +350,5 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 }
-
-// ==============================================================
-// ВРЕМЕННЫЕ ЗАГЛУШКИ, ЧТОБЫ ПРИЛОЖЕНИЕ СКОМПИЛИРОВАЛОСЬ
-// В следующих шагах мы заменим их на настоящие экраны!
-// ==============================================================
-
-class ClientChatsListScreen extends StatelessWidget {
-  const ClientChatsListScreen({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Чаты с клиентами'), backgroundColor: Colors.blue[700], foregroundColor: Colors.white),
-      body: const Center(child: Text('Здесь будет список клиентов, которые вам написали.\nВ разработке (Шаг 2).', textAlign: TextAlign.center)),
-    );
-  }
-}
-
-class TeamChatsListScreen extends StatelessWidget {
-  const TeamChatsListScreen({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Чат команды'), backgroundColor: Colors.orange[600], foregroundColor: Colors.white),
-      body: const Center(child: Text('Здесь будет список сотрудников и групп.\nВ разработке (Шаг 2).', textAlign: TextAlign.center)),
-    );
-  }
-}
+// ❗ ВНИМАНИЕ: Здесь больше нет классов-заглушек ClientChatsListScreen и TeamChatsListScreen!
+// Теперь Flutter вынужден открывать реальный файл, который мы импортировали в самом верху.
