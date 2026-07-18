@@ -1,8 +1,9 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:firebase_messaging/firebase_messaging.dart'; // ❗ ПОДКЛЮЧИЛИ ПУШИ
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_ringtone_player/flutter_ringtone_player.dart'; // ❗ ЗВУК ВЕРНУЛСЯ
 
 import 'users_screen.dart';
 import 'orders_screen.dart';
@@ -31,14 +32,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       _myPhone = prefs.getString('employee_phone') ?? 'admin';
     });
-    _setupPushNotifications(); // ❗ ВКЛЮЧАЕМ РАЦИЮ ПРИ ЗАПУСКЕ
+    _setupPushNotifications(); 
   }
 
-  // ❗ ПОДПИСКА НА ТОПИК АДМИНОВ
   Future<void> _setupPushNotifications() async {
     FirebaseMessaging messaging = FirebaseMessaging.instance;
     await messaging.requestPermission();
     await messaging.subscribeToTopic('admins'); 
+
+    // ❗ ИГРАЕМ ЗВУК ТОЛЬКО ПРИ НОВОМ ПУШЕ (Когда приложение открыто)
+    // Это полностью исключает двойные звуки и ложные звонки при входе в приложение!
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      FlutterRingtonePlayer().playNotification();
+      HapticFeedback.heavyImpact();
+    });
   }
 
   Widget _buildDrawer(BuildContext context) {
