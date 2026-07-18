@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
-import '../services/push_service.dart'; // ❗ ПОДКЛЮЧИЛИ ПУШ-СЕРВИС
+import '../services/push_service.dart';
 
 class PrivateChatScreen extends StatefulWidget {
   final String roomId;
@@ -34,7 +34,6 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     final text = _controller.text.trim();
     _controller.clear();
 
-    // 1. Сохраняем в базу (как было)
     await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).collection('messages').add({
       'text': text,
       'sender_phone': _myPhone,
@@ -49,7 +48,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       'last_sender': 'admin',
     });
 
-    // ❗ 2. ВЫСТРЕЛИВАЕМ СИСТЕМНЫМ PUSH-УВЕДОМЛЕНИЕМ КЛИЕНТУ
+    // ❗ ОТПРАВЛЯЕМ PUSH И ЖДЕМ ОТВЕТА ОТ СЕРВЕРА
     try {
       final roomDoc = await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).get();
       final parts = List<String>.from(roomDoc.data()?['participants'] ?? []);
@@ -58,15 +57,30 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       if (targetPhone.isNotEmpty) {
         final clientDoc = await FirebaseFirestore.instance.collection('clients').doc(targetPhone).get();
         if (clientDoc.exists && clientDoc.data()?['fcm_token'] != null) {
-          await PushService.sendPushToToken(
+          
+          final result = await PushService.sendPushToToken(
             clientDoc.data()!['fcm_token'], 
-            'Ответ от мастера M-Service', // Заголовок пуша
-            text // Текст пуша
+            'Ответ от мастера', 
+            text
           );
+          
+          // ❗ ВЫВОДИМ РЕЗУЛЬТАТ НА ЭКРАН ТВОЕГО ТЕЛЕФОНА
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Push: $result', style: const TextStyle(fontSize: 12)), duration: const Duration(seconds: 5))
+            );
+          }
+          
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('У клиента нет push-токена')));
+          }
         }
       }
     } catch (e) {
-      print('Push send failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Сбой: $e')));
+      }
     }
   }
 
