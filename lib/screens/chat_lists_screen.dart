@@ -36,7 +36,6 @@ class _ClientChatsListScreenState extends State<ClientChatsListScreen> {
         foregroundColor: Colors.white
       ),
       body: StreamBuilder<QuerySnapshot>(
-        // ❗ УБРАЛИ .where() ИЗ ЗАПРОСА. Теперь нет проблем с индексами!
         stream: FirebaseFirestore.instance.collection('chat_rooms').snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -47,7 +46,6 @@ class _ClientChatsListScreenState extends State<ClientChatsListScreen> {
             return _buildEmptyState();
           }
 
-          // ❗ ФИЛЬТРУЕМ ПРИВАТНЫЕ ЧАТЫ ВНУТРИ ПРИЛОЖЕНИЯ
           final allRooms = snapshot.data!.docs;
           final rooms = allRooms.where((doc) {
             final data = doc.data() as Map<String, dynamic>;
@@ -58,7 +56,6 @@ class _ClientChatsListScreenState extends State<ClientChatsListScreen> {
             return _buildEmptyState();
           }
 
-          // Сортируем: чаты с последними сообщениями будут наверху
           rooms.sort((a, b) {
             final aData = a.data() as Map<String, dynamic>;
             final bData = b.data() as Map<String, dynamic>;
@@ -82,39 +79,56 @@ class _ClientChatsListScreenState extends State<ClientChatsListScreen> {
               final data = rooms[i].data() as Map<String, dynamic>;
               final participants = data['participants'] as List<dynamic>? ?? [];
               
-              // Находим номер телефона клиента (исключаем свой собственный номер)
               String clientPhone = 'Клиент';
               if (participants.isNotEmpty) {
                 clientPhone = participants.firstWhere((p) => p != _myPhone, orElse: () => participants.last).toString();
               }
 
-              return Card(
-                elevation: 1,
-                margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Colors.blue[50], 
-                    child: Icon(Icons.person, color: Colors.blue[700])
-                  ),
-                  title: Text(
-                    clientPhone, 
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)
-                  ), 
-                  subtitle: Text(
-                    data['last_message'] ?? 'Нет сообщений', 
-                    maxLines: 1, 
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: Colors.grey[600])
-                  ),
-                  trailing: const Icon(Icons.chevron_right, color: Colors.blueGrey),
-                  onTap: () => Navigator.push(
-                    context, 
-                    MaterialPageRoute(
-                      builder: (_) => PrivateChatScreen(roomId: rooms[i].id, targetName: clientPhone)
-                    )
-                  ),
-                ),
+              // ❗ НОВОЕ: ИЩЕМ ИМЯ КЛИЕНТА В БАЗЕ ПО ЕГО НОМЕРУ ❗
+              return FutureBuilder<QuerySnapshot>(
+                future: FirebaseFirestore.instance.collection('clients').where('phone', isEqualTo: clientPhone).limit(1).get(),
+                builder: (context, clientSnapshot) {
+                  
+                  String displayName = clientPhone; // По умолчанию показываем номер телефона
+                  
+                  // Если клиент найден в базе, берем его имя
+                  if (clientSnapshot.hasData && clientSnapshot.data!.docs.isNotEmpty) {
+                    final clientData = clientSnapshot.data!.docs.first.data() as Map<String, dynamic>;
+                    if (clientData['name'] != null && clientData['name'].toString().trim().isNotEmpty) {
+                      displayName = clientData['name'];
+                    }
+                  }
+
+                  return Card(
+                    elevation: 1,
+                    margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: Colors.blue[50], 
+                        child: Icon(Icons.person, color: Colors.blue[700])
+                      ),
+                      title: Text(
+                        displayName, // ❗ ВЫВОДИМ ИМЯ
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)
+                      ), 
+                      subtitle: Text(
+                        data['last_message'] ?? 'Нет сообщений', 
+                        maxLines: 1, 
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Colors.grey[600])
+                      ),
+                      trailing: const Icon(Icons.chevron_right, color: Colors.blueGrey),
+                      onTap: () => Navigator.push(
+                        context, 
+                        MaterialPageRoute(
+                          // Передаем ИМЯ внутрь чата, чтобы оно горело в шапке
+                          builder: (_) => PrivateChatScreen(roomId: rooms[i].id, targetName: displayName)
+                        )
+                      ),
+                    ),
+                  );
+                }
               );
             },
           );
@@ -123,7 +137,6 @@ class _ClientChatsListScreenState extends State<ClientChatsListScreen> {
     );
   }
 
-  // Красивая заглушка для пустого списка
   Widget _buildEmptyState() {
     return Center(
       child: Padding(
