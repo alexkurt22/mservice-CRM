@@ -1,9 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
+import 'package:firebase_messaging/firebase_messaging.dart'; // ❗ ПОДКЛЮЧИЛИ ПУШИ
 
 import 'users_screen.dart';
 import 'orders_screen.dart';
@@ -20,7 +19,6 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   String _myPhone = 'admin';
-  StreamSubscription<QuerySnapshot>? _chatSubscription;
 
   @override
   void initState() {
@@ -28,35 +26,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadUserData();
   }
 
-  @override
-  void dispose() {
-    _chatSubscription?.cancel();
-    super.dispose();
-  }
-
   Future<void> _loadUserData() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _myPhone = prefs.getString('employee_phone') ?? 'admin';
     });
-    _listenToNewMessages();
+    _setupPushNotifications(); // ❗ ВКЛЮЧАЕМ РАЦИЮ ПРИ ЗАПУСКЕ
   }
 
-  // ❗ ШПИОН: СЛУШАЕТ БАЗУ И ЗВЕНИТ ПРИ НОВЫХ СООБЩЕНИЯХ
-  void _listenToNewMessages() {
-    _chatSubscription = FirebaseFirestore.instance.collection('chat_rooms').snapshots().listen((snapshot) {
-      for (var change in snapshot.docChanges) {
-        if (change.type == DocumentChangeType.modified || change.type == DocumentChangeType.added) {
-          final data = change.doc.data() as Map<String, dynamic>;
-          int unreadCount = data['unread_count'] as int? ?? 0;
-          
-          if (unreadCount > 0 && data['last_sender'] != _myPhone) {
-            FlutterRingtonePlayer().playNotification(); // Звук!
-            HapticFeedback.heavyImpact(); // Вибрация!
-          }
-        }
-      }
-    });
+  // ❗ ПОДПИСКА НА ТОПИК АДМИНОВ
+  Future<void> _setupPushNotifications() async {
+    FirebaseMessaging messaging = FirebaseMessaging.instance;
+    await messaging.requestPermission();
+    await messaging.subscribeToTopic('admins'); 
   }
 
   Widget _buildDrawer(BuildContext context) {
@@ -268,7 +250,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             
-            // ❗ ТЕПЕРЬ ЗАКАЗЫ НАВЕРХУ ❗
             Row(
               children: [
                 Icon(Icons.home_repair_service, color: Colors.blueGrey[800]),
@@ -334,7 +315,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             
             const SizedBox(height: 32),
 
-            // ❗ А КЛИЕНТЫ ТЕПЕРЬ ВНИЗУ ❗
             Row(
               children: [
                 Icon(Icons.people_alt, color: Colors.blueGrey[800]),
