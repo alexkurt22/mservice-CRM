@@ -1,13 +1,63 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
+
 import 'users_screen.dart';
 import 'orders_screen.dart';
 import 'database_cleanup_screen.dart'; 
 import 'settings_screen.dart';
-import 'chat_lists_screen.dart'; // ❗ ВОТ ОН, ПРАВИЛЬНЫЙ ИМПОРТ НАШИХ СПИСКОВ ЧАТОВ
+import 'chat_lists_screen.dart'; 
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  String _myPhone = 'admin';
+  StreamSubscription<QuerySnapshot>? _chatSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  @override
+  void dispose() {
+    _chatSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _myPhone = prefs.getString('employee_phone') ?? 'admin';
+    });
+    _listenToNewMessages();
+  }
+
+  // ❗ ШПИОН: СЛУШАЕТ БАЗУ И ЗВЕНИТ ПРИ НОВЫХ СООБЩЕНИЯХ
+  void _listenToNewMessages() {
+    _chatSubscription = FirebaseFirestore.instance.collection('chat_rooms').snapshots().listen((snapshot) {
+      for (var change in snapshot.docChanges) {
+        if (change.type == DocumentChangeType.modified || change.type == DocumentChangeType.added) {
+          final data = change.doc.data() as Map<String, dynamic>;
+          int unreadCount = data['unread_count'] as int? ?? 0;
+          
+          if (unreadCount > 0 && data['last_sender'] != _myPhone) {
+            FlutterRingtonePlayer().playNotification(); // Звук!
+            HapticFeedback.heavyImpact(); // Вибрация!
+          }
+        }
+      }
+    });
+  }
 
   Widget _buildDrawer(BuildContext context) {
     return Drawer(
@@ -155,39 +205,58 @@ class DashboardScreen extends StatelessWidget {
       ),
       drawer: _buildDrawer(context), 
       
-      // ==========================================
-      // БЛОК ЧАТОВ (КНОПКИ ТЕПЕРЬ ВЕДУТ В РЕАЛЬНЫЕ СПИСКИ)
-      // ==========================================
-      floatingActionButton: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          FloatingActionButton.extended(
-            heroTag: 'client_chat_btn',
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ClientChatsListScreen())),
-            backgroundColor: Colors.blue[700],
-            icon: Badge(
-              label: const Text('0'), 
-              backgroundColor: Colors.red,
-              isLabelVisible: false, 
-              child: const Icon(Icons.support_agent, color: Colors.white),
-            ),
-            label: const Text('Чаты с клиентами', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-          const SizedBox(height: 16),
-          FloatingActionButton.extended(
-            heroTag: 'team_chat_btn',
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TeamChatsListScreen())),
-            backgroundColor: Colors.orange[600],
-            icon: Badge(
-              label: const Text('0'), 
-              backgroundColor: Colors.red,
-              isLabelVisible: false, 
-              child: const Icon(Icons.groups, color: Colors.white),
-            ),
-            label: const Text('Чат команды', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-        ],
+      floatingActionButton: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance.collection('chat_rooms').snapshots(),
+        builder: (context, snapshot) {
+          int unreadClientChats = 0;
+          int unreadTeamChats = 0;
+
+          if (snapshot.hasData) {
+            for (var doc in snapshot.data!.docs) {
+              final data = doc.data() as Map<String, dynamic>;
+              int count = data['unread_count'] as int? ?? 0;
+              
+              if (count > 0 && data['last_sender'] != _myPhone) {
+                if (data['type'] == 'private') unreadClientChats += count;
+                if (data['type'] == 'team') unreadTeamChats += count;
+              }
+            }
+          }
+
+          return Column(
+            mainAxisAlignment: MainAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Badge(
+                isLabelVisible: unreadClientChats > 0,
+                label: Text(unreadClientChats.toString(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                backgroundColor: Colors.red,
+                offset: const Offset(-4, -4),
+                child: FloatingActionButton.extended(
+                  heroTag: 'client_chat_btn',
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ClientChatsListScreen())),
+                  backgroundColor: Colors.blue[700],
+                  icon: const Icon(Icons.support_agent, color: Colors.white),
+                  label: const Text('Чаты с клиентами', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Badge(
+                isLabelVisible: unreadTeamChats > 0,
+                label: Text(unreadTeamChats.toString(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                backgroundColor: Colors.red,
+                offset: const Offset(-4, -4),
+                child: FloatingActionButton.extended(
+                  heroTag: 'team_chat_btn',
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TeamChatsListScreen())),
+                  backgroundColor: Colors.orange[600],
+                  icon: const Icon(Icons.groups, color: Colors.white),
+                  label: const Text('Чат команды', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          );
+        },
       ),
 
       body: SingleChildScrollView(
@@ -198,7 +267,74 @@ class DashboardScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ================== БЛОК 1: КЛИЕНТЫ ==================
+            
+            // ❗ ТЕПЕРЬ ЗАКАЗЫ НАВЕРХУ ❗
+            Row(
+              children: [
+                Icon(Icons.home_repair_service, color: Colors.blueGrey[800]),
+                const SizedBox(width: 8),
+                Text('Заказы', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.blueGrey[900], letterSpacing: 1.2)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 1.1,
+              children: [
+                _buildStatCard(
+                  context: context,
+                  title: 'Новые заказы',
+                  icon: Icons.fiber_new,
+                  color: Colors.blue,
+                  child: _buildStreamStat(
+                    stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'new').snapshots(),
+                    color: Colors.blue[800]!,
+                  ),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 0))),
+                ),
+                _buildStatCard(
+                  context: context,
+                  title: 'Ожидают ответа',
+                  icon: Icons.hourglass_empty,
+                  color: Colors.deepPurple,
+                  child: _buildStreamStat(
+                    stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'awaiting_approval').snapshots(),
+                    color: Colors.deepPurple[800]!,
+                  ),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 1))),
+                ),
+                _buildStatCard(
+                  context: context,
+                  title: 'Выполняются',
+                  icon: Icons.build_circle,
+                  color: Colors.orange,
+                  child: _buildStreamStat(
+                    stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'in_progress').snapshots(),
+                    color: Colors.orange[800]!,
+                  ),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 2))),
+                ),
+                _buildStatCard(
+                  context: context,
+                  title: 'Выполненные',
+                  icon: Icons.check_circle,
+                  color: Colors.teal,
+                  child: _buildStreamStat(
+                    stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'completed').snapshots(),
+                    color: Colors.teal[800]!,
+                  ),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 3))),
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 32),
+
+            // ❗ А КЛИЕНТЫ ТЕПЕРЬ ВНИЗУ ❗
             Row(
               children: [
                 Icon(Icons.people_alt, color: Colors.blueGrey[800]),
@@ -279,76 +415,10 @@ class DashboardScreen extends StatelessWidget {
             ),
             
             const SizedBox(height: 32),
-
-            // ================== БЛОК 2: ЗАКАЗЫ ==================
-            Row(
-              children: [
-                Icon(Icons.home_repair_service, color: Colors.blueGrey[800]),
-                const SizedBox(width: 8),
-                Text('Заказы', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.blueGrey[900], letterSpacing: 1.2)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: 1.1,
-              children: [
-                _buildStatCard(
-                  context: context,
-                  title: 'Новые заказы',
-                  icon: Icons.fiber_new,
-                  color: Colors.blue,
-                  child: _buildStreamStat(
-                    stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'new').snapshots(),
-                    color: Colors.blue[800]!,
-                  ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 0))),
-                ),
-                _buildStatCard(
-                  context: context,
-                  title: 'Ожидают ответа',
-                  icon: Icons.hourglass_empty,
-                  color: Colors.deepPurple,
-                  child: _buildStreamStat(
-                    stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'awaiting_approval').snapshots(),
-                    color: Colors.deepPurple[800]!,
-                  ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 1))),
-                ),
-                _buildStatCard(
-                  context: context,
-                  title: 'Выполняются',
-                  icon: Icons.build_circle,
-                  color: Colors.orange,
-                  child: _buildStreamStat(
-                    stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'in_progress').snapshots(),
-                    color: Colors.orange[800]!,
-                  ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 2))),
-                ),
-                _buildStatCard(
-                  context: context,
-                  title: 'Выполненные',
-                  icon: Icons.check_circle,
-                  color: Colors.teal,
-                  child: _buildStreamStat(
-                    stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'completed').snapshots(),
-                    color: Colors.teal[800]!,
-                  ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 3))),
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
           ],
         ),
       ),
     );
   }
 }
-// ❗ ВНИМАНИЕ: Здесь больше нет классов-заглушек ClientChatsListScreen и TeamChatsListScreen!
-// Теперь Flutter вынужден открывать реальный файл, который мы импортировали в самом верху.
+
