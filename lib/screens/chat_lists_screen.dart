@@ -38,19 +38,23 @@ class _ClientChatsListScreenState extends State<ClientChatsListScreen> {
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('chat_rooms').snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-          
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text('Нет активных чатов'));
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
           }
           
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return _buildEmptyState();
+          }
+
           final allRooms = snapshot.data!.docs;
           final rooms = allRooms.where((doc) {
             final data = doc.data() as Map<String, dynamic>;
             return data['type'] == 'private';
           }).toList();
 
-          if (rooms.isEmpty) return const Center(child: Text('Нет активных чатов'));
+          if (rooms.isEmpty) {
+            return _buildEmptyState();
+          }
 
           rooms.sort((a, b) {
             final aData = a.data() as Map<String, dynamic>;
@@ -64,28 +68,95 @@ class _ClientChatsListScreenState extends State<ClientChatsListScreen> {
           });
 
           return ListView.builder(
-            padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 20),
+            padding: EdgeInsets.only(
+              top: 8.0,
+              left: 8.0,
+              right: 8.0,
+              bottom: MediaQuery.of(context).padding.bottom + 20
+            ),
             itemCount: rooms.length,
             itemBuilder: (context, i) {
               final data = rooms[i].data() as Map<String, dynamic>;
+              final participants = data['participants'] as List<dynamic>? ?? [];
               
-              // ❗ ЛОГИКА БЕЙДЖИКА ДЛЯ АДМИНА
+              String clientPhone = 'Клиент';
+              if (participants.isNotEmpty) {
+                clientPhone = participants.firstWhere((p) => p != _myPhone, orElse: () => participants.last).toString();
+              }
+
+              // ❗ ЛОГИКА БЕЙДЖИКОВ ❗
               int unreadCount = data['unread_count'] as int? ?? 0;
               bool isClientSender = data['last_sender'] != _myPhone;
 
-              return ListTile(
-                leading: Badge(
-                  isLabelVisible: isClientSender && unreadCount > 0,
-                  label: Text(unreadCount.toString()),
-                  child: const CircleAvatar(child: Icon(Icons.person)),
-                ),
-                title: Text('Клиент: ${data['participants']?.last ?? '...' }'), 
-                subtitle: Text(data['last_message'] ?? 'Нет сообщений'),
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PrivateChatScreen(roomId: rooms[i].id, targetName: 'Клиент'))),
+              // ❗ ИЩЕМ ИМЯ КЛИЕНТА В БАЗЕ ❗
+              return FutureBuilder<QuerySnapshot>(
+                future: FirebaseFirestore.instance.collection('clients').where('phone', isEqualTo: clientPhone).limit(1).get(),
+                builder: (context, clientSnapshot) {
+                  
+                  String displayName = clientPhone; 
+                  
+                  if (clientSnapshot.hasData && clientSnapshot.data!.docs.isNotEmpty) {
+                    final clientData = clientSnapshot.data!.docs.first.data() as Map<String, dynamic>;
+                    if (clientData['name'] != null && clientData['name'].toString().trim().isNotEmpty) {
+                      displayName = clientData['name'];
+                    }
+                  }
+
+                  return Card(
+                    elevation: 1,
+                    margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    child: ListTile(
+                      leading: Badge(
+                        isLabelVisible: isClientSender && unreadCount > 0,
+                        label: Text(unreadCount.toString()),
+                        child: CircleAvatar(
+                          backgroundColor: Colors.blue[50], 
+                          child: Icon(Icons.person, color: Colors.blue[700])
+                        ),
+                      ),
+                      title: Text(
+                        displayName, 
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)
+                      ), 
+                      subtitle: Text(
+                        data['last_message'] ?? 'Нет сообщений', 
+                        maxLines: 1, 
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Colors.grey[600])
+                      ),
+                      trailing: const Icon(Icons.chevron_right, color: Colors.blueGrey),
+                      onTap: () => Navigator.push(
+                        context, 
+                        MaterialPageRoute(
+                          builder: (_) => PrivateChatScreen(roomId: rooms[i].id, targetName: displayName)
+                        )
+                      ),
+                    ),
+                  );
+                }
               );
             },
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.chat_bubble_outline, size: 64, color: Colors.blueGrey[200]),
+            const SizedBox(height: 16),
+            Text('Нет активных чатов', style: TextStyle(color: Colors.blueGrey[600], fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            const Text('Чтобы начать чат, перейдите в блок Клиенты -> Зарегистрированные и нажмите на синюю иконку сообщения.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 13)),
+          ],
+        ),
       ),
     );
   }
@@ -111,6 +182,8 @@ class TeamChatsListScreen extends StatelessWidget {
         'type': 'team',
         'participants': participants,
         'created_at': FieldValue.serverTimestamp(),
+        'last_message': 'Чат создан',
+        'last_message_time': FieldValue.serverTimestamp(),
       });
     }
 
@@ -122,23 +195,48 @@ class TeamChatsListScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Сотрудники'), backgroundColor: Colors.orange[600], foregroundColor: Colors.white),
+      appBar: AppBar(title: const Text('Чат команды'), backgroundColor: Colors.orange[600], foregroundColor: Colors.white),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('employees').snapshots(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.group_off, size: 64, color: Colors.blueGrey[200]),
+                  const SizedBox(height: 16),
+                  Text('Нет сотрудников', style: TextStyle(color: Colors.blueGrey[600], fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  const Text('В базе данных пока пусто.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 13)),
+                ],
+              ),
+            );
+          }
+
           final employees = snapshot.data!.docs;
           
           return ListView.builder(
-            padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 20),
+            padding: EdgeInsets.only(top: 8.0, left: 8.0, right: 8.0, bottom: MediaQuery.of(context).padding.bottom + 20),
             itemCount: employees.length,
             itemBuilder: (context, i) {
               final data = employees[i].data() as Map<String, dynamic>;
-              return ListTile(
-                leading: const CircleAvatar(backgroundColor: Colors.orange, child: Icon(Icons.person, color: Colors.white)),
-                title: Text(data['name'] ?? 'Сотрудник'),
-                subtitle: Text(data['phone'] ?? ''),
-                onTap: () => _startChatWithEmployee(context, data['phone'] ?? '', data['name'] ?? 'Сотрудник'),
+              final String empName = data['name'] ?? 'Сотрудник';
+              final String empPhone = data['phone'] ?? '';
+              
+              return Card(
+                elevation: 1,
+                margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: ListTile(
+                  leading: const CircleAvatar(backgroundColor: Colors.orange, child: Icon(Icons.person, color: Colors.white)),
+                  title: Text(empName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(empPhone),
+                  trailing: const Icon(Icons.chevron_right, color: Colors.blueGrey),
+                  onTap: () => _startChatWithEmployee(context, empPhone, empName),
+                ),
               );
             },
           );
