@@ -26,11 +26,15 @@ jobs:
           
       - name: Generate system files
         run: flutter create --platforms=android .
+        
+      - name: Fix Android Manifest for SMS
+        run: |
+          echo "import 'dart:io'; void main() { var f = File('android/app/src/main/AndroidManifest.xml'); var text = f.readAsStringSync(); text = text.replaceFirst('<application', '<queries><intent><action android:name=\"android.intent.action.VIEW\"/><data android:scheme=\"sms\"/></intent></queries><application'); f.writeAsStringSync(text); }" > fix_manifest.dart
+          dart fix_manifest.dart
 
       - name: Install dependencies
         run: flutter pub get
 
-      # ❗ НАШ МАГИЧЕСКИЙ БЛОК: ИСПРАВЛЯЕТ ВЕРСИИ ANDROID SDK ❗
       - name: Fix Android SDK versions
         run: |
           find /home/runner/.pub-cache/hosted -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion 33/compileSdkVersion 34/g' {} +
@@ -40,17 +44,17 @@ jobs:
           sed -i 's/compileSdkVersion 33/compileSdkVersion 34/g' android/app/build.gradle 2>/dev/null || true
           sed -i 's/targetSdkVersion 33/targetSdkVersion 34/g' android/app/build.gradle 2>/dev/null || true
 
+      # ❗ БЕЗОПАСНОСТЬ: Создаем файл ключа из Сейфа на лету прямо перед сборкой
+      - name: Inject Secret Keys
+        run: |
+          mkdir -p assets
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > assets/firebase_credentials.json
 
       - name: Build APK
         run: flutter build apk --release
 
-      - name: Rename APK
-        run: mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/mservice_crm.apk
-
-      - name: Upload APK
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          # Робот возьмет текст твоего коммита (например "база плюс профиль") и сделает его названием архива!
-          name: mservice_crm_${{ github.event.head_commit.message }}
-          path: build/app/outputs/flutter-apk/mservice_crm.apk
-
+          name: app-release
+          path: build/app/outputs/flutter-apk/app-release.apk
