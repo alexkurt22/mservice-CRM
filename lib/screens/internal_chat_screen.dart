@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/push_service.dart'; // ❗ ПОДКЛЮЧИЛИ СЕРВИС ПУШЕЙ
 
 class InternalChatScreen extends StatefulWidget {
   const InternalChatScreen({super.key});
@@ -38,12 +39,34 @@ class _InternalChatScreenState extends State<InternalChatScreen> {
     final text = _msgController.text.trim();
     _msgController.clear();
 
+    // 1. Сохраняем сообщение в базу
     await FirebaseFirestore.instance.collection('internal_chat').add({
       'sender_name': _employeeName,
       'sender_phone': _employeePhone,
       'text': text,
       'created_at': FieldValue.serverTimestamp(),
     });
+
+    // 2. ❗ ОТПРАВЛЯЕМ PUSH ВСЕМ СОТРУДНИКАМ В РАЦИЮ ❗
+    try {
+      final result = await PushService.sendPushToAdmins('Чат сотрудников', '$_employeeName: $text');
+      
+      // Выводим диагностическую табличку (потом можно будет убрать)
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Push команде: $result', style: const TextStyle(fontSize: 12)), 
+            duration: const Duration(seconds: 3)
+          )
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка Push: $e'))
+        );
+      }
+    }
   }
 
   @override
@@ -94,21 +117,23 @@ class _InternalChatScreenState extends State<InternalChatScreen> {
               },
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _msgController,
-                    decoration: const InputDecoration(hintText: 'Сообщение...', border: OutlineInputBorder()),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _msgController,
+                      decoration: const InputDecoration(hintText: 'Сообщение...', border: OutlineInputBorder()),
+                    ),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.send, color: Colors.blueGrey),
-                  onPressed: _sendMessage,
-                ),
-              ],
+                  IconButton(
+                    icon: const Icon(Icons.send, color: Colors.blueGrey),
+                    onPressed: _sendMessage,
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -116,4 +141,3 @@ class _InternalChatScreenState extends State<InternalChatScreen> {
     );
   }
 }
-
