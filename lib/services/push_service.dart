@@ -7,11 +7,29 @@ class PushService {
   static Future<String> sendPushToToken(String token, String title, String body) async {
     try {
       final jsonString = await rootBundle.loadString('assets/firebase_credentials.json');
-      final accountCredentials = ServiceAccountCredentials.fromJson(jsonString);
+      final map = jsonDecode(jsonString);
+
+      // ❗ АВТО-ЛЕКАРЬ: ЧИНИМ СЛОМАННЫЙ КЛЮЧ ПЕРЕД ОТПРАВКОЙ ❗
+      String pk = map['private_key'] as String;
+      pk = pk.replaceAll(RegExp(r'\\n'), '\n'); // Меняем текстовые \n на переносы
+      pk = pk.replaceAll('-----BEGIN PRIVATE KEY-----', '');
+      pk = pk.replaceAll('-----END PRIVATE KEY-----', '');
+      pk = pk.replaceAll(RegExp(r'\s+'), ''); // Удаляем ВСЕ сломанные пробелы
+
+      // Нарезаем чистый ключ ровно по 64 символа (стандарт PEM)
+      String chunkedPk = '';
+      for (int i = 0; i < pk.length; i += 64) {
+        chunkedPk += pk.substring(i, i + 64 > pk.length ? pk.length : i + 64) + '\n';
+      }
+      map['private_key'] = '-----BEGIN PRIVATE KEY-----\n$chunkedPk-----END PRIVATE KEY-----\n';
+
+      // Пересобираем починенный ключ и пускаем в работу
+      final fixedJsonString = jsonEncode(map);
+      final accountCredentials = ServiceAccountCredentials.fromJson(fixedJsonString);
 
       final scopes = ['https://www.googleapis.com/auth/firebase.messaging'];
       final client = await clientViaServiceAccount(accountCredentials, scopes);
-      final projectId = jsonDecode(jsonString)['project_id'];
+      final projectId = map['project_id'];
 
       final url = 'https://fcm.googleapis.com/v1/projects/$projectId/messages:send';
       final payload = {
@@ -22,7 +40,7 @@ class PushService {
             'body': body,
           },
           'android': {
-            'priority': 'high', // ❗ КРИТИЧЕСКИ ВАЖНО: ЗАСТАВЛЯЕТ ANDROID ПРОСНУТЬСЯ
+            'priority': 'high', // Пробивает спящий режим телефона
             'notification': {
               'sound': 'default',
               'default_vibrate_timings': true,
@@ -40,7 +58,6 @@ class PushService {
 
       client.close();
       
-      // ❗ ТЕПЕРЬ МЫ ТОЧНО УЗНАЕМ, ЧТО ОТВЕТИЛ GOOGLE
       if (response.statusCode == 200) {
         return 'Успех (200)';
       } else {
