@@ -1,9 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter_ringtone_player/flutter_ringtone_player.dart'; // ❗ ЗВУК ВЕРНУЛСЯ
+import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 
 import 'users_screen.dart';
 import 'orders_screen.dart';
@@ -38,10 +39,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _setupPushNotifications() async {
     FirebaseMessaging messaging = FirebaseMessaging.instance;
     await messaging.requestPermission();
+    
+    // Подписка на общую рацию (для системных уведомлений от клиентов)
     await messaging.subscribeToTopic('admins'); 
 
-    // ❗ ИГРАЕМ ЗВУК ТОЛЬКО ПРИ НОВОМ ПУШЕ (Когда приложение открыто)
-    // Это полностью исключает двойные звуки и ложные звонки при входе в приложение!
+    // ❗ НОВОЕ: СОХРАНЯЕМ ЛИЧНЫЙ ТОКЕН СОТРУДНИКА ДЛЯ ПЕРЕПИСОК 1-НА-1
+    if (_myPhone != 'admin') {
+      String? token = await messaging.getToken();
+      if (token != null) {
+        await FirebaseFirestore.instance.collection('employees').doc(_myPhone).set({
+          'fcm_token': token,
+        }, SetOptions(merge: true));
+      }
+
+      // Обновляем токен, если Google его вдруг поменяет
+      messaging.onTokenRefresh.listen((newToken) async {
+        await FirebaseFirestore.instance.collection('employees').doc(_myPhone).set({
+          'fcm_token': newToken,
+        }, SetOptions(merge: true));
+      });
+    }
+
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       FlutterRingtonePlayer().playNotification();
       HapticFeedback.heavyImpact();
@@ -408,4 +426,3 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
-
