@@ -45,35 +45,55 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       'last_message': text,
       'last_message_time': FieldValue.serverTimestamp(),
       'unread_count': FieldValue.increment(1), 
-      'last_sender': _myPhone, // ❗ ИСПРАВЛЕН ГЛЮК С БЕЙДЖИКОМ (было 'admin')
+      'last_sender': _myPhone,
     });
 
-    // ❗ ОТПРАВЛЯЕМ PUSH И ЖДЕМ ОТВЕТА ОТ СЕРВЕРА
+    // ❗ УМНАЯ ОТПРАВКА 1-НА-1 ❗
     try {
       final roomDoc = await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).get();
       final parts = List<String>.from(roomDoc.data()?['participants'] ?? []);
       final targetPhone = parts.firstWhere((p) => p != _myPhone, orElse: () => '');
 
       if (targetPhone.isNotEmpty) {
-        final clientDoc = await FirebaseFirestore.instance.collection('clients').doc(targetPhone).get();
-        if (clientDoc.exists && clientDoc.data()?['fcm_token'] != null) {
-          
-          final result = await PushService.sendPushToToken(
-            clientDoc.data()!['fcm_token'], 
-            'Ответ от мастера', 
-            text
-          );
-          
-          // ❗ ВЫВОДИМ РЕЗУЛЬТАТ НА ЭКРАН ТВОЕГО ТЕЛЕФОНА
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Push: $result', style: const TextStyle(fontSize: 12)), duration: const Duration(seconds: 5))
+        if (widget.roomId.contains('team_')) {
+          // --- 1. ЭТО ЛИЧНЫЙ ЧАТ СОТРУДНИКОВ (Отправка конкретному коллеге) ---
+          final empDoc = await FirebaseFirestore.instance.collection('employees').doc(targetPhone).get();
+          if (empDoc.exists && empDoc.data()?['fcm_token'] != null) {
+            final result = await PushService.sendPushToToken(
+              empDoc.data()!['fcm_token'], 
+              'Новое сообщение от коллеги', 
+              text
             );
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Push коллеге: $result', style: const TextStyle(fontSize: 12)), duration: const Duration(seconds: 3))
+              );
+            }
+          } else {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('У коллеги нет push-токена (он не открывал приложение)')));
+            }
           }
-          
         } else {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('У клиента нет push-токена')));
+          // --- 2. ЭТО ЧАТ С КЛИЕНТОМ (Отправка клиенту) ---
+          final clientDoc = await FirebaseFirestore.instance.collection('clients').doc(targetPhone).get();
+          if (clientDoc.exists && clientDoc.data()?['fcm_token'] != null) {
+            
+            final result = await PushService.sendPushToToken(
+              clientDoc.data()!['fcm_token'], 
+              'Ответ от мастера', 
+              text
+            );
+            
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Push клиенту: $result', style: const TextStyle(fontSize: 12)), duration: const Duration(seconds: 3))
+              );
+            }
+          } else {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('У клиента нет push-токена')));
+            }
           }
         }
       }
