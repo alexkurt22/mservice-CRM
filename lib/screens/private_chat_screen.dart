@@ -45,7 +45,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       'last_message': text,
       'last_message_time': FieldValue.serverTimestamp(),
       'unread_count': FieldValue.increment(1), 
-      'last_sender': 'admin',
+      'last_sender': _myPhone, // ❗ ИСПРАВЛЕН ГЛЮК С БЕЙДЖИКОМ (было 'admin')
     });
 
     // ❗ ОТПРАВЛЯЕМ PUSH И ЖДЕМ ОТВЕТА ОТ СЕРВЕРА
