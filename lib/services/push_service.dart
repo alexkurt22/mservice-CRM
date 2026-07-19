@@ -4,7 +4,7 @@ import 'package:googleapis_auth/auth_io.dart';
 import 'package:http/http.dart' as http;
 
 class PushService {
-  static Future<String> sendPushToAdmins(String title, String body) async {
+  static Future<String> sendPushToToken(String token, String title, String body) async {
     try {
       final jsonString = await rootBundle.loadString('assets/firebase_credentials.json');
       final accountCredentials = ServiceAccountCredentials.fromJson(jsonString);
@@ -15,7 +15,7 @@ class PushService {
       final url = 'https://fcm.googleapis.com/v1/projects/$projectId/messages:send';
       final payload = {
         'message': {
-          'topic': 'admins',
+          'token': token,
           'notification': { 'title': title, 'body': body },
           'android': {
             'priority': 'high',
