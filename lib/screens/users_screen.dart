@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'private_chat_screen.dart'; 
-import 'import_clients_screen.dart'; // Подключили экран импорта
+import 'import_clients_screen.dart';
 
 class UsersScreen extends StatefulWidget {
   final int tabType;
@@ -98,11 +98,13 @@ class _UsersScreenState extends State<UsersScreen> {
     }
   }
 
-  // --- ЛОГИКА ДОБАВЛЕНИЯ ОФФЛАЙН КЛИЕНТА ВРУЧНУЮ ---
+  // --- ЛОГИКА ДОБАВЛЕНИЯ ОФФЛАЙН КЛИЕНТА ВРУЧНУЮ (ОБНОВЛЕННАЯ С ЖИВОЙ ПРОВЕРКОЙ) ---
   void _showAddOfflineClientDialog() {
     final nameController = TextEditingController();
     final phoneController = TextEditingController(text: '+993');
     bool isSaving = false;
+    bool isChecking = false;
+    String warningMessage = '';
 
     showDialog(
       context: context,
@@ -110,11 +112,56 @@ class _UsersScreenState extends State<UsersScreen> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
+            
+            // Функция проверки номера на лету
+            void checkPhone(String currentPhone) async {
+              if (currentPhone.length < 11) {
+                setModalState(() => warningMessage = '');
+                return;
+              }
+              setModalState(() { isChecking = true; warningMessage = ''; });
+              
+              final existingCheck = await FirebaseFirestore.instance
+                  .collection('clients')
+                  .where('phone', isEqualTo: currentPhone)
+                  .get();
+
+              setModalState(() {
+                isChecking = false;
+                if (existingCheck.docs.isNotEmpty) {
+                  final clientName = existingCheck.docs.first.data()['name'] ?? 'Неизвестно';
+                  warningMessage = 'Этот номер уже принадлежит клиенту: $clientName';
+                }
+              });
+            }
+
             return AlertDialog(
               title: const Text('Новый клиент (Оффлайн)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // 1. СНАЧАЛА НОМЕР ТЕЛЕФОНА
+                  TextField(
+                    controller: phoneController,
+                    decoration: InputDecoration(
+                      labelText: 'Номер телефона',
+                      prefixIcon: const Icon(Icons.phone),
+                      suffixIcon: isChecking ? const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(strokeWidth: 2)) : null,
+                    ),
+                    keyboardType: TextInputType.phone,
+                    onChanged: checkPhone, // Проверяем на лету!
+                  ),
+                  
+                  // ПОКАЗЫВАЕМ ОШИБКУ, ЕСЛИ НОМЕР НАЙДЕН
+                  if (warningMessage.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Text(warningMessage, style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold)),
+                    ),
+
+                  const SizedBox(height: 16),
+                  
+                  // 2. ЗАТЕМ ИМЯ
                   TextField(
                     controller: nameController,
                     decoration: const InputDecoration(
@@ -122,15 +169,6 @@ class _UsersScreenState extends State<UsersScreen> {
                       prefixIcon: Icon(Icons.person),
                     ),
                     textCapitalization: TextCapitalization.words,
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: phoneController,
-                    decoration: const InputDecoration(
-                      labelText: 'Номер телефона',
-                      prefixIcon: Icon(Icons.phone),
-                    ),
-                    keyboardType: TextInputType.phone,
                   ),
                 ],
               ),
@@ -141,52 +179,32 @@ class _UsersScreenState extends State<UsersScreen> {
                     child: const Text('Отмена', style: TextStyle(color: Colors.blueGrey)),
                   ),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey[900]),
-                  onPressed: isSaving ? null : () async {
+                  style: ElevatedButton.styleFrom(backgroundColor: warningMessage.isNotEmpty ? Colors.grey : Colors.blueGrey[900]),
+                  // Блокируем кнопку, если номер уже есть в базе
+                  onPressed: (isSaving || warningMessage.isNotEmpty) ? null : () async {
                     final name = nameController.text.trim();
                     final phone = phoneController.text.trim();
 
                     if (name.isEmpty || phone.isEmpty || phone.length < 8) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Заполните корректно Имя и Телефон'))
-                      );
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Заполните корректно Телефон и Имя')));
                       return;
                     }
 
                     setModalState(() => isSaving = true);
 
                     try {
-                      // Проверка на дубликат в базе
-                      final existingCheck = await FirebaseFirestore.instance
-                          .collection('clients')
-                          .where('phone', isEqualTo: phone)
-                          .get();
-
-                      if (existingCheck.docs.isNotEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Клиент с номером $phone уже существует в базе!'), backgroundColor: Colors.red)
-                        );
-                        setModalState(() => isSaving = false);
-                        return;
-                      }
-
-                      // Если дубликата нет, создаем клиента
                       await FirebaseFirestore.instance.collection('clients').add({
                         'name': name,
                         'phone': phone,
-                        'is_offline': true, // Главный флаг оффлайн-клиента
+                        'is_offline': true, 
                         'is_approved': false,
                         'created_at': FieldValue.serverTimestamp(),
                       });
 
                       Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Оффлайн клиент успешно добавлен!'), backgroundColor: Colors.green)
-                      );
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Оффлайн клиент успешно добавлен!'), backgroundColor: Colors.green));
                     } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red)
-                      );
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red));
                       setModalState(() => isSaving = false);
                     }
                   },
@@ -219,10 +237,10 @@ class _UsersScreenState extends State<UsersScreen> {
           final isApproved = data['is_approved'] == true;
           final isOffline = data['is_offline'] == true;
 
-          if (widget.tabType == 0) return !isApproved && reason == null && !isOffline; // Ждут одобрения
-          if (widget.tabType == 1) return isOffline; // Строго оффлайн клиенты
-          if (widget.tabType == 2) return isApproved && !isOffline; // Зарегистрированные (строго с приложением)
-          if (widget.tabType == 3) return !isApproved && reason != null; // Отклоненные
+          if (widget.tabType == 0) return !isApproved && reason == null && !isOffline; 
+          if (widget.tabType == 1) return isOffline; 
+          if (widget.tabType == 2) return isApproved && !isOffline; 
+          if (widget.tabType == 3) return !isApproved && reason != null; 
           return false;
         }).toList();
 
@@ -360,7 +378,6 @@ class _UsersScreenState extends State<UsersScreen> {
         foregroundColor: Colors.white,
         title: Text(widget.title), 
         actions: [
-          // НОВОЕ: КНОПКА МАССОВОГО ИМПОРТА (Показывается только во вкладке "Без приложения")
           if (widget.tabType == 1)
             IconButton(
               icon: const Icon(Icons.upload_file),
