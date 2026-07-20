@@ -43,7 +43,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // Подписка на общую рацию (для системных уведомлений от клиентов)
     await messaging.subscribeToTopic('admins'); 
 
-    // ❗ НОВОЕ: СОХРАНЯЕМ ЛИЧНЫЙ ТОКЕН СОТРУДНИКА ДЛЯ ПЕРЕПИСОК 1-НА-1
+    // ❗️ НОВОЕ: СОХРАНЯЕМ ЛИЧНЫЙ ТОКЕН СОТРУДНИКА ДЛЯ ПЕРЕПИСОК 1-НА-1
     if (_myPhone != 'admin') {
       String? token = await messaging.getToken();
       if (token != null) {
@@ -300,7 +300,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'new').snapshots(),
                     color: Colors.blue[800]!,
                   ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 0))),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(status: 'new', title: 'Новые заказы'))),
                 ),
                 _buildStatCard(
                   context: context,
@@ -311,7 +311,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'awaiting_approval').snapshots(),
                     color: Colors.deepPurple[800]!,
                   ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 1))),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(status: 'awaiting_approval', title: 'Ожидают ответа'))),
                 ),
                 _buildStatCard(
                   context: context,
@@ -322,7 +322,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'in_progress').snapshots(),
                     color: Colors.orange[800]!,
                   ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 2))),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(status: 'in_progress', title: 'В работе (Выполняются)'))),
                 ),
                 _buildStatCard(
                   context: context,
@@ -333,7 +333,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'completed').snapshots(),
                     color: Colors.teal[800]!,
                   ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(initialTab: 3))),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(status: 'completed', title: 'Выполненные заказы'))),
                 ),
               ],
             ),
