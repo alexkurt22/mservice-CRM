@@ -37,21 +37,30 @@ jobs:
 
       - name: Fix Android SDK versions
         run: |
-          find /home/runner/.pub-cache/hosted -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion 33/compileSdkVersion 34/g' {} +
-          find /home/runner/.pub-cache/hosted -name "build.gradle" -type f -exec sed -i 's/compileSdk 33/compileSdk 34/g' {} +
-          sed -i 's/compileSdk = 33/compileSdk = 34/g' android/app/build.gradle.kts 2>/dev/null || true
-          sed -i 's/targetSdk = 33/targetSdk = 34/g' android/app/build.gradle.kts 2>/dev/null || true
-          sed -i 's/compileSdkVersion 33/compileSdkVersion 34/g' android/app/build.gradle 2>/dev/null || true
+          # 1. Принудительно ставим compileSdk 36 для всех скачанных пакетов (чтобы file_picker не ругался)
+          find /home/runner/.pub-cache/hosted -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion 33/compileSdkVersion 36/g' {} +
+          find /home/runner/.pub-cache/hosted -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion 34/compileSdkVersion 36/g' {} +
+          find /home/runner/.pub-cache/hosted -name "build.gradle" -type f -exec sed -i 's/compileSdk 33/compileSdk 36/g' {} +
+          find /home/runner/.pub-cache/hosted -name "build.gradle" -type f -exec sed -i 's/compileSdk 34/compileSdk 36/g' {} +
+          
+          # 2. Принудительно ставим compileSdk 36 в самом проекте (заменяем и переменные, и старые цифры)
+          sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/g' android/app/build.gradle 2>/dev/null || true
+          sed -i 's/compileSdkVersion 33/compileSdkVersion 36/g' android/app/build.gradle 2>/dev/null || true
+          sed -i 's/compileSdkVersion 34/compileSdkVersion 36/g' android/app/build.gradle 2>/dev/null || true
+          sed -i 's/compileSdk = 33/compileSdk = 36/g' android/app/build.gradle.kts 2>/dev/null || true
+          sed -i 's/compileSdk = 34/compileSdk = 36/g' android/app/build.gradle.kts 2>/dev/null || true
+          
+          # 3. targetSdk оставляем 34 (этого требует Google Play)
+          sed -i 's/targetSdkVersion flutter.targetSdkVersion/targetSdkVersion 34/g' android/app/build.gradle 2>/dev/null || true
           sed -i 's/targetSdkVersion 33/targetSdkVersion 34/g' android/app/build.gradle 2>/dev/null || true
+          sed -i 's/targetSdk = 33/targetSdk = 34/g' android/app/build.gradle.kts 2>/dev/null || true
 
-            # Бронебойная распаковка ключа из Base64
       - name: Inject Secret Keys
         env:
           FIREBASE_SECRET: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
           mkdir -p assets
           echo "$FIREBASE_SECRET" | base64 -d > assets/firebase_credentials.json
-
 
       - name: Build APK
         run: flutter build apk --release
