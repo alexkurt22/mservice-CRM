@@ -97,6 +97,110 @@ class _UsersScreenState extends State<UsersScreen> {
     }
   }
 
+  // --- ЛОГИКА ДОБАВЛЕНИЯ ОФФЛАЙН КЛИЕНТА ВРУЧНУЮ ---
+  void _showAddOfflineClientDialog() {
+    final nameController = TextEditingController();
+    final phoneController = TextEditingController(text: '+993');
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return AlertDialog(
+              title: const Text('Новый клиент (Оффлайн)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Имя клиента',
+                      prefixIcon: Icon(Icons.person),
+                    ),
+                    textCapitalization: TextCapitalization.words,
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: phoneController,
+                    decoration: const InputDecoration(
+                      labelText: 'Номер телефона',
+                      prefixIcon: Icon(Icons.phone),
+                    ),
+                    keyboardType: TextInputType.phone,
+                  ),
+                ],
+              ),
+              actions: [
+                if (!isSaving)
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Отмена', style: TextStyle(color: Colors.blueGrey)),
+                  ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey[900]),
+                  onPressed: isSaving ? null : () async {
+                    final name = nameController.text.trim();
+                    final phone = phoneController.text.trim();
+
+                    if (name.isEmpty || phone.isEmpty || phone.length < 8) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Заполните корректно Имя и Телефон'))
+                      );
+                      return;
+                    }
+
+                    setModalState(() => isSaving = true);
+
+                    try {
+                      // Проверка на дубликат в базе
+                      final existingCheck = await FirebaseFirestore.instance
+                          .collection('clients')
+                          .where('phone', isEqualTo: phone)
+                          .get();
+
+                      if (existingCheck.docs.isNotEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Клиент с номером $phone уже существует в базе!'), backgroundColor: Colors.red)
+                        );
+                        setModalState(() => isSaving = false);
+                        return;
+                      }
+
+                      // Если дубликата нет, создаем клиента
+                      await FirebaseFirestore.instance.collection('clients').add({
+                        'name': name,
+                        'phone': phone,
+                        'is_offline': true, // Главный флаг оффлайн-клиента
+                        'is_approved': false,
+                        'created_at': FieldValue.serverTimestamp(),
+                      });
+
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Оффлайн клиент успешно добавлен!'), backgroundColor: Colors.green)
+                      );
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red)
+                      );
+                      setModalState(() => isSaving = false);
+                    }
+                  },
+                  child: isSaving 
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('Сохранить', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          },
+        );
+      }
+    );
+  }
+
   Widget _buildUsersList() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('clients').snapshots(),
@@ -112,7 +216,7 @@ class _UsersScreenState extends State<UsersScreen> {
           final data = doc.data() as Map<String, dynamic>;
           final reason = data['rejection_reason'];
           final isApproved = data['is_approved'] == true;
-          final isOffline = data['is_offline'] == true; // Вот этот флаг ставится при оффлайн добавлении
+          final isOffline = data['is_offline'] == true;
 
           if (widget.tabType == 0) return !isApproved && reason == null && !isOffline; // Ждут одобрения
           if (widget.tabType == 1) return isOffline; // Строго оффлайн клиенты
@@ -142,7 +246,7 @@ class _UsersScreenState extends State<UsersScreen> {
         }
 
         return ListView.builder(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 20, top: 12, left: 12, right: 12),
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 80, top: 12, left: 12, right: 12),
           itemCount: docs.length,
           itemBuilder: (context, index) {
             final doc = docs[index];
@@ -253,9 +357,18 @@ class _UsersScreenState extends State<UsersScreen> {
       appBar: AppBar(
         backgroundColor: Colors.blueGrey[900],
         foregroundColor: Colors.white,
-        title: Text(widget.title), // Динамический заголовок без вкладок
+        title: Text(widget.title), 
       ),
-      body: _buildUsersList(), // Показываем только нужный список
+      // НОВОЕ: КНОПКА ДОБАВЛЕНИЯ КЛИЕНТА ПОКАЗЫВАЕТСЯ ТОЛЬКО ВО ВКЛАДКЕ "БЕЗ ПРИЛОЖЕНИЯ" (tabType == 1)
+      floatingActionButton: widget.tabType == 1 
+          ? FloatingActionButton.extended(
+              onPressed: _showAddOfflineClientDialog,
+              backgroundColor: Colors.blueGrey[800],
+              icon: const Icon(Icons.person_add, color: Colors.white),
+              label: const Text('Добавить', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            )
+          : null,
+      body: _buildUsersList(), 
     );
   }
 }
