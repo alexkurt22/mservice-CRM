@@ -369,12 +369,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       return data['is_approved'] == false && data['rejection_reason'] == null && data['is_offline'] != true;
                     }
                   ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(initialTab: 0))),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(tabType: 0, title: 'Ждут одобрения'))),
                 ),
                 _buildStatCard(
                   context: context,
-                  title: 'Незарегистрированные',
-                  icon: Icons.person_off,
+                  title: 'Без приложения',
+                  icon: Icons.person_outline, // Поменял иконку, чтобы она отличалась от "Отклоненных"
                   color: Colors.grey,
                   child: _buildStreamStat(
                     stream: FirebaseFirestore.instance.collection('clients').snapshots(),
@@ -384,11 +384,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       return data['is_offline'] == true;
                     }
                   ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(initialTab: 1))),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(tabType: 1, title: 'Без приложения'))),
                 ),
                 _buildStatCard(
                   context: context,
-                  title: 'Зарегистрированные',
+                  title: 'С приложением',
                   icon: Icons.verified_user,
                   color: Colors.green,
                   child: _buildStreamStat(
@@ -396,10 +396,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     color: Colors.green[800]!,
                     filter: (doc) {
                       final data = doc.data() as Map<String, dynamic>;
-                      return data['is_approved'] == true;
+                      return data['is_approved'] == true && data['is_offline'] != true; // ИСПРАВЛЕНО: Скрыли оффлайн-клиентов из этого списка
                     }
                   ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(initialTab: 2))),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(tabType: 2, title: 'С приложением'))),
                 ),
                 _buildStatCard(
                   context: context,
@@ -414,7 +414,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       return data['is_approved'] == false && data['rejection_reason'] != null;
                     }
                   ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(initialTab: 3))),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(tabType: 3, title: 'Отклоненные'))),
                 ),
               ],
             ),
