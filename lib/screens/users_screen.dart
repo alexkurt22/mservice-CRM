@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'private_chat_screen.dart'; 
+import 'import_clients_screen.dart'; // Подключили экран импорта
 
 class UsersScreen extends StatefulWidget {
   final int tabType;
@@ -358,8 +359,18 @@ class _UsersScreenState extends State<UsersScreen> {
         backgroundColor: Colors.blueGrey[900],
         foregroundColor: Colors.white,
         title: Text(widget.title), 
+        actions: [
+          // НОВОЕ: КНОПКА МАССОВОГО ИМПОРТА (Показывается только во вкладке "Без приложения")
+          if (widget.tabType == 1)
+            IconButton(
+              icon: const Icon(Icons.upload_file),
+              tooltip: 'Массовый импорт базы',
+              onPressed: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const ImportClientsScreen()));
+              },
+            ),
+        ],
       ),
-      // НОВОЕ: КНОПКА ДОБАВЛЕНИЯ КЛИЕНТА ПОКАЗЫВАЕТСЯ ТОЛЬКО ВО ВКЛАДКЕ "БЕЗ ПРИЛОЖЕНИЯ" (tabType == 1)
       floatingActionButton: widget.tabType == 1 
           ? FloatingActionButton.extended(
               onPressed: _showAddOfflineClientDialog,
