@@ -4,42 +4,20 @@ import 'order_details_screen.dart';
 import 'offline_order_screen.dart'; 
 
 class OrdersScreen extends StatefulWidget {
-  final int initialTab;
+  final String status;
+  final String title;
 
-  const OrdersScreen({super.key, this.initialTab = 0});
+  const OrdersScreen({
+    super.key, 
+    required this.status, 
+    required this.title,
+  });
 
   @override
   State<OrdersScreen> createState() => _OrdersScreenState();
 }
 
-class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 4, vsync: this, initialIndex: widget.initialTab);
-    _tabController.addListener(() {
-      if (!_tabController.indexIsChanging) {
-        setState(() {});
-      }
-    });
-  }
-  
-  // ЭТО ИСПРАВЛЯЕТ БАГ: Если экран уже был открыт, обновляем его вкладку
-  @override
-  void didUpdateWidget(covariant OrdersScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialTab != widget.initialTab) {
-      _tabController.animateTo(widget.initialTab);
-    }
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
+class _OrdersScreenState extends State<OrdersScreen> {
 
   Widget _buildOrdersList(String statusKey) {
     return StreamBuilder<QuerySnapshot>(
@@ -168,22 +146,9 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
       appBar: AppBar(
         backgroundColor: Colors.blueGrey[900],
         foregroundColor: Colors.white,
-        title: const Text('Заказы Центр'),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.white,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white54,
-          isScrollable: true, 
-          tabs: const [
-            Tab(text: 'Новые заказы'),
-            Tab(text: 'Ожидают ответа клиента'), 
-            Tab(text: 'Выполняются'),
-            Tab(text: 'Выполненные'),
-          ],
-        ),
+        title: Text(widget.title), // Заголовок теперь меняется динамически
       ),
-      floatingActionButton: _tabController.index == 2
+      floatingActionButton: widget.status == 'in_progress'
           ? Padding(
               padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 8.0),
               child: FloatingActionButton(
@@ -199,15 +164,8 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
               ),
             )
           : null,
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildOrdersList('new'),               
-          _buildOrdersList('awaiting_approval'), 
-          _buildOrdersList('in_progress'),       
-          _buildOrdersList('completed'),          
-        ],
-      ),
+      body: _buildOrdersList(widget.status), // Отрисовываем только нужный статус
     );
   }
 }
+
