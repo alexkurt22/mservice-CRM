@@ -1,8 +1,9 @@
 import 'dart:io';
+import 'dart:convert'; // ВАЖНО: Добавлено для расшифровки русских имен
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart'; 
-import 'package:file_picker/file_picker.dart'; // Пакет для чтения файлов
+import 'package:file_picker/file_picker.dart'; 
 
 class ParsedContact {
   String phone;
@@ -31,17 +32,47 @@ class _ImportClientsScreenState extends State<ImportClientsScreen> {
   int _duplicatesInText = 0;
   int _alreadyInDb = 0;
 
+  // --- ФУНКЦИЯ ДЕКОДИРОВАНИЯ (ПРЕВРАЩАЕТ =D0=9C В НОРМАЛЬНЫЕ БУКВЫ) ---
+  String _decodeQuotedPrintable(String input) {
+    try {
+      // Убираем переносы
+      input = input.replaceAll('=\n', '').replaceAll('=\r\n', '');
+      
+      List<int> bytes = [];
+      int i = 0;
+      while (i < input.length) {
+        if (input[i] == '=' && i + 2 < input.length) {
+          String hex = input.substring(i + 1, i + 3);
+          int? byteValue = int.tryParse(hex, radix: 16);
+          if (byteValue != null) {
+            bytes.add(byteValue);
+            i += 3;
+            continue;
+          }
+        }
+        bytes.add(input.codeUnitAt(i));
+        i++;
+      }
+      return utf8.decode(bytes, allowMalformed: true);
+    } catch (e) {
+      return input; // Если не получилось, отдаем как есть
+    }
+  }
+
   // --- ЛОГИКА ЧТЕНИЯ .VCF ФАЙЛОВ ---
   Future<void> _pickVcfFile() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.any, // Разрешаем любые файлы, телефон сам разберется
+        type: FileType.any, 
       );
 
       if (result != null && result.files.single.path != null) {
         setState(() => _isProcessing = true);
         File file = File(result.files.single.path!);
         String content = await file.readAsString();
+
+        // Склеиваем разорванные строки (стандарт формата VCF)
+        content = content.replaceAll(RegExp(r'\n[ \t]'), '');
 
         String extractedText = '';
         String currentName = 'Без имени';
@@ -52,10 +83,17 @@ class _ImportClientsScreenState extends State<ImportClientsScreen> {
           if (line.startsWith('BEGIN:VCARD')) {
             currentName = 'Без имени';
           } else if (line.startsWith('FN')) {
-            // Вытаскиваем имя (формат FN:Иван Иванов)
+            // Вытаскиваем имя
             int colonIdx = line.indexOf(':');
             if (colonIdx != -1) {
-              currentName = line.substring(colonIdx + 1).trim();
+              String rawName = line.substring(colonIdx + 1).trim();
+              
+              // Проверяем, нужно ли расшифровать имя (если оно выглядит как =D0=9C...)
+              if (line.substring(0, colonIdx).toUpperCase().contains('QUOTED-PRINTABLE') || rawName.contains('=')) {
+                currentName = _decodeQuotedPrintable(rawName);
+              } else {
+                currentName = rawName;
+              }
             }
           } else if (line.startsWith('TEL')) {
             // Вытаскиваем телефон
@@ -69,10 +107,10 @@ class _ImportClientsScreenState extends State<ImportClientsScreen> {
 
         if (extractedText.isNotEmpty) {
           setState(() {
-            _pasteController.text = extractedText; // Вставляем в окно для проверки
+            _pasteController.text = extractedText; 
           });
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Файл прочитан! Нажмите "Анализировать текст"'), backgroundColor: Colors.green)
+            const SnackBar(content: Text('Файл успешно прочитан и расшифрован!'), backgroundColor: Colors.green)
           );
         } else {
            ScaffoldMessenger.of(context).showSnackBar(
@@ -244,7 +282,6 @@ class _ImportClientsScreenState extends State<ImportClientsScreen> {
         backgroundColor: Colors.blueGrey[900],
         foregroundColor: Colors.white,
       ),
-      // ИСПРАВЛЕНИЕ: SafeArea защищает контент от наложения на системные кнопки телефона!
       body: SafeArea(
         child: _step == 1 ? _buildStep1Input() : _buildStep2Review(),
       ),
@@ -269,7 +306,6 @@ class _ImportClientsScreenState extends State<ImportClientsScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          // НОВАЯ КНОПКА ЗАГРУЗКИ ФАЙЛА
           OutlinedButton.icon(
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14),
@@ -389,7 +425,7 @@ class _ImportClientsScreenState extends State<ImportClientsScreen> {
             ),
         ),
         Container(
-          padding: EdgeInsets.only(bottom: 12, top: 12, left: 16, right: 16),
+          padding: const EdgeInsets.only(bottom: 12, top: 12, left: 16, right: 16),
           decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, -2))]),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
