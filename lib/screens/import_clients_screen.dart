@@ -1,9 +1,9 @@
 import 'dart:io';
-import 'dart:convert'; // ВАЖНО: Добавлено для расшифровки русских имен
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/services.dart'; 
 import 'package:file_picker/file_picker.dart'; 
+import 'package:share_plus/share_plus.dart'; // Пакет для кнопки "Поделиться"
 
 class ParsedContact {
   String phone;
@@ -32,12 +32,10 @@ class _ImportClientsScreenState extends State<ImportClientsScreen> {
   int _duplicatesInText = 0;
   int _alreadyInDb = 0;
 
-  // --- ФУНКЦИЯ ДЕКОДИРОВАНИЯ (ПРЕВРАЩАЕТ =D0=9C В НОРМАЛЬНЫЕ БУКВЫ) ---
+  // --- БРОНЕБОЙНЫЙ ДЕКОДЕР ДЛЯ VCF ФАЙЛОВ ---
   String _decodeQuotedPrintable(String input) {
+    if (!input.contains('=')) return input;
     try {
-      // Убираем переносы
-      input = input.replaceAll('=\n', '').replaceAll('=\r\n', '');
-      
       List<int> bytes = [];
       int i = 0;
       while (i < input.length) {
@@ -55,53 +53,53 @@ class _ImportClientsScreenState extends State<ImportClientsScreen> {
       }
       return utf8.decode(bytes, allowMalformed: true);
     } catch (e) {
-      return input; // Если не получилось, отдаем как есть
+      return input; 
     }
   }
 
-  // --- ЛОГИКА ЧТЕНИЯ .VCF ФАЙЛОВ ---
   Future<void> _pickVcfFile() async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.any, 
-      );
+      FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.any);
 
       if (result != null && result.files.single.path != null) {
         setState(() => _isProcessing = true);
         File file = File(result.files.single.path!);
         String content = await file.readAsString();
 
-        // Склеиваем разорванные строки (стандарт формата VCF)
-        content = content.replaceAll(RegExp(r'\n[ \t]'), '');
+        // 1. Склеиваем разорванные строки (VCF часто бьет длинные имена на 2 строки)
+        content = content.replaceAll('=\r\n', '').replaceAll('=\n', '');
+        content = content.replaceAll(RegExp(r'\r\n[ \t]+'), '');
+        content = content.replaceAll(RegExp(r'\n[ \t]+'), '');
 
         String extractedText = '';
-        String currentName = 'Без имени';
+        List<String> cards = content.split('BEGIN:VCARD');
 
-        // Парсим VCF построчно
-        for (String line in content.split('\n')) {
-          line = line.trim();
-          if (line.startsWith('BEGIN:VCARD')) {
-            currentName = 'Без имени';
-          } else if (line.startsWith('FN')) {
-            // Вытаскиваем имя
-            int colonIdx = line.indexOf(':');
-            if (colonIdx != -1) {
-              String rawName = line.substring(colonIdx + 1).trim();
-              
-              // Проверяем, нужно ли расшифровать имя (если оно выглядит как =D0=9C...)
-              if (line.substring(0, colonIdx).toUpperCase().contains('QUOTED-PRINTABLE') || rawName.contains('=')) {
+        for (String card in cards) {
+          if (card.trim().isEmpty) continue;
+          
+          String currentName = 'Без имени';
+          List<String> phones = [];
+
+          for (String line in card.split('\n')) {
+            line = line.trim();
+            if (line.startsWith('FN')) {
+              int colonIdx = line.indexOf(':');
+              if (colonIdx != -1) {
+                String rawName = line.substring(colonIdx + 1).trim();
                 currentName = _decodeQuotedPrintable(rawName);
-              } else {
-                currentName = rawName;
+              }
+            } else if (line.startsWith('TEL')) {
+              int colonIdx = line.indexOf(':');
+              if (colonIdx != -1) {
+                phones.add(line.substring(colonIdx + 1).trim());
               }
             }
-          } else if (line.startsWith('TEL')) {
-            // Вытаскиваем телефон
-            int colonIdx = line.indexOf(':');
-            if (colonIdx != -1) {
-              String rawPhone = line.substring(colonIdx + 1).trim();
-              extractedText += '$currentName $rawPhone\n';
-            }
+          }
+
+          // Добавляем всех найденных телефонов из одной карточки
+          for (String p in phones) {
+            // Разделитель "|" поможет нам потом четко разбить колонки
+            extractedText += '$currentName | $p\n';
           }
         }
 
@@ -110,7 +108,7 @@ class _ImportClientsScreenState extends State<ImportClientsScreen> {
             _pasteController.text = extractedText; 
           });
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Файл успешно прочитан и расшифрован!'), backgroundColor: Colors.green)
+            const SnackBar(content: Text('Файл расшифрован! Проверьте текст и нажмите "Анализировать"'), backgroundColor: Colors.green)
           );
         } else {
            ScaffoldMessenger.of(context).showSnackBar(
@@ -176,8 +174,17 @@ class _ImportClientsScreenState extends State<ImportClientsScreen> {
 
           seenPhonesInText.add(cleanPhone);
 
-          String name = line.replaceAll(rawMatched, '').trim();
-          name = name.replaceAll(RegExp(r'^[^a-zA-Zа-яА-Я0-9]+|[^a-zA-Zа-яА-Я0-9]+$'), '').trim();
+          String name = 'Без имени';
+          
+          // Если строка пришла из VCF (с разделителем |), разбиваем точно!
+          if (line.contains('|')) {
+             name = line.split('|')[0].trim();
+          } else {
+             // Резервный метод, если текст вставили вручную без "|"
+             name = line.replaceAll(rawMatched, '').trim();
+             name = name.replaceAll(RegExp(r'^[^a-zA-Zа-яА-Я0-9]+|[^a-zA-Zа-яА-Я0-9]+$'), '').trim();
+          }
+
           if (name.isEmpty) name = 'Без имени';
 
           _readyContacts.add(ParsedContact(phone: cleanPhone, name: name));
@@ -195,10 +202,12 @@ class _ImportClientsScreenState extends State<ImportClientsScreen> {
     }
   }
 
-  Future<void> _copyUnselectedToClipboard(List<ParsedContact> unselected) async {
+  // ФУНКЦИЯ "ПОДЕЛИТЬСЯ"
+  Future<void> _shareUnselected(List<ParsedContact> unselected) async {
     if (unselected.isEmpty) return;
-    String textToCopy = unselected.map((c) => '${c.phone} ${c.nameController.text.trim()}').join('\n');
-    await Clipboard.setData(ClipboardData(text: textToCopy));
+    String textToShare = "Остаток контактов для импорта:\n\n";
+    textToShare += unselected.map((c) => '${c.nameController.text.trim()} | ${c.phone}').join('\n');
+    await Share.share(textToShare, subject: 'Отложенные контакты CRM');
   }
 
   Future<void> _importSelected() async {
@@ -236,7 +245,7 @@ class _ImportClientsScreenState extends State<ImportClientsScreen> {
           barrierDismissible: false,
           builder: (context) => AlertDialog(
             title: const Text('Успешный импорт! 🎉'),
-            content: Text('Импортировано в базу: ${toImport.length}\n\nОсталось неотмеченных: ${toDelay.length}\n\nСкопировать оставшиеся контакты в буфер обмена?'),
+            content: Text('Импортировано в базу: ${toImport.length}\n\nОсталось неотмеченных: ${toDelay.length}\n\nХотите поделиться оставшимися контактами (например, отправить в Избранное Telegram)?'),
             actions: [
               TextButton(
                 onPressed: () {
@@ -246,15 +255,14 @@ class _ImportClientsScreenState extends State<ImportClientsScreen> {
                 child: const Text('Просто выйти', style: TextStyle(color: Colors.grey)),
               ),
               ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey[900]),
-                icon: const Icon(Icons.copy, color: Colors.white),
-                label: const Text('Скопировать и выйти', style: TextStyle(color: Colors.white)),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[600]),
+                icon: const Icon(Icons.share, color: Colors.white, size: 18),
+                label: const Text('Поделиться', style: TextStyle(color: Colors.white)),
                 onPressed: () async {
-                  await _copyUnselectedToClipboard(toDelay);
+                  await _shareUnselected(toDelay);
                   if (context.mounted) {
                     Navigator.pop(context);
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Отложенные контакты скопированы!'), backgroundColor: Colors.blue));
                   }
                 },
               )
@@ -325,7 +333,7 @@ class _ImportClientsScreenState extends State<ImportClientsScreen> {
               expands: true,
               textAlignVertical: TextAlignVertical.top,
               decoration: const InputDecoration(
-                hintText: 'Иван +99365112233\nМердан 864 12-34-56...',
+                hintText: 'Иван | +99365112233\nМердан | 864 12-34-56...',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -358,8 +366,8 @@ class _ImportClientsScreenState extends State<ImportClientsScreen> {
               Text('📊 Результаты анализа:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey[900])),
               const SizedBox(height: 8),
               Text('Найдено номеров: $_totalFound', style: const TextStyle(fontSize: 14)),
-              Text('Дубликатов в тексте (проигнорировано): $_duplicatesInText', style: const TextStyle(fontSize: 14, color: Colors.orange)),
-              Text('Уже есть в базе CRM (проигнорировано): $_alreadyInDb', style: const TextStyle(fontSize: 14, color: Colors.red)),
+              Text('Дубликатов в тексте: $_duplicatesInText', style: const TextStyle(fontSize: 14, color: Colors.orange)),
+              Text('Уже есть в базе: $_alreadyInDb', style: const TextStyle(fontSize: 14, color: Colors.red)),
               const Divider(),
               
               Row(
@@ -380,6 +388,16 @@ class _ImportClientsScreenState extends State<ImportClientsScreen> {
                   ),
                 ],
               ),
+              // Заголовки колонок
+              const Padding(
+                padding: EdgeInsets.only(top: 8.0, left: 45, right: 12),
+                child: Row(
+                  children: [
+                    Expanded(flex: 2, child: Text('НОМЕР', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold))),
+                    Expanded(flex: 3, child: Text('ИМЯ (можно менять)', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold))),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -393,7 +411,7 @@ class _ImportClientsScreenState extends State<ImportClientsScreen> {
                 return Card(
                   margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
                     child: Row(
                       children: [
                         Checkbox(
@@ -402,19 +420,22 @@ class _ImportClientsScreenState extends State<ImportClientsScreen> {
                             setState(() => contact.isSelected = val ?? false);
                           },
                         ),
-                        SizedBox(
-                          width: 105,
-                          child: Text(contact.phone, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                        ),
+                        // КОЛОНКА 1: НОМЕР
                         Expanded(
+                          flex: 2,
+                          child: Text(contact.phone, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5)),
+                        ),
+                        // КОЛОНКА 2: ИМЯ
+                        Expanded(
+                          flex: 3,
                           child: TextField(
                             controller: contact.nameController,
                             decoration: const InputDecoration(
                               isDense: true,
                               border: InputBorder.none,
-                              hintText: 'Имя',
+                              hintText: 'Введите имя',
                             ),
-                            style: TextStyle(fontSize: 14, color: contact.isSelected ? Colors.black : Colors.grey),
+                            style: TextStyle(fontSize: 14, color: contact.isSelected ? Colors.black : Colors.grey[600]),
                           ),
                         ),
                       ],
@@ -433,11 +454,10 @@ class _ImportClientsScreenState extends State<ImportClientsScreen> {
               if (unselectedCount > 0)
                 OutlinedButton.icon(
                   onPressed: () async {
-                    await _copyUnselectedToClipboard(_readyContacts.where((c) => !c.isSelected).toList());
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Отложенные контакты скопированы!')));
+                    await _shareUnselected(_readyContacts.where((c) => !c.isSelected).toList());
                   },
-                  icon: const Icon(Icons.copy),
-                  label: Text('Скопировать отложенные ($unselectedCount)'),
+                  icon: const Icon(Icons.share, size: 20),
+                  label: Text('Поделиться отложенными ($unselectedCount)'),
                   style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
                 ),
               if (unselectedCount > 0) const SizedBox(height: 8),
@@ -456,3 +476,4 @@ class _ImportClientsScreenState extends State<ImportClientsScreen> {
     );
   }
 }
+
