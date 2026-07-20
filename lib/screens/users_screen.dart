@@ -1,38 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'private_chat_screen.dart'; // Подключаем экран переписки
+import 'private_chat_screen.dart'; 
 
 class UsersScreen extends StatefulWidget {
-  final int initialTab;
-  const UsersScreen({super.key, required this.initialTab});
+  final int tabType;
+  final String title;
+
+  const UsersScreen({
+    super.key, 
+    required this.tabType,
+    required this.title,
+  });
 
   @override
   State<UsersScreen> createState() => _UsersScreenState();
 }
 
-class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 4, vsync: this, initialIndex: widget.initialTab);
-  }
-
-  @override
-  void didUpdateWidget(covariant UsersScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialTab != widget.initialTab) {
-      _tabController.animateTo(widget.initialTab);
-    }
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
+class _UsersScreenState extends State<UsersScreen> {
 
   void _approveUser(String docId) {
     FirebaseFirestore.instance.collection('clients').doc(docId).update({
@@ -84,12 +69,10 @@ class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStat
     );
   }
 
-  // --- ЛОГИКА СОЗДАНИЯ ИЛИ ОТКРЫТИЯ ЧАТА С КЛИЕНТОМ ---
   Future<void> _openPrivateChat(BuildContext context, String targetPhone, String targetName) async {
     final prefs = await SharedPreferences.getInstance();
     final myPhone = prefs.getString('employee_phone') ?? 'admin';
 
-    // Формируем уникальный ID комнаты (сортируем номера, чтобы ID был одинаков для обоих)
     List<String> participants = [myPhone, targetPhone];
     participants.sort();
     String roomId = 'private_${participants[0]}_${participants[1]}';
@@ -97,7 +80,6 @@ class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStat
     final roomRef = FirebaseFirestore.instance.collection('chat_rooms').doc(roomId);
     final doc = await roomRef.get();
 
-    // Если комнаты еще нет — создаем её в базе
     if (!doc.exists) {
       await roomRef.set({
         'type': 'private',
@@ -108,7 +90,6 @@ class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStat
       });
     }
 
-    // Открываем экран переписки
     if (context.mounted) {
       Navigator.push(context, MaterialPageRoute(
         builder: (_) => PrivateChatScreen(roomId: roomId, targetName: targetName)
@@ -116,7 +97,7 @@ class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStat
     }
   }
 
-  Widget _buildUsersList(int tabType) {
+  Widget _buildUsersList() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('clients').snapshots(),
       builder: (context, snapshot) {
@@ -131,12 +112,12 @@ class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStat
           final data = doc.data() as Map<String, dynamic>;
           final reason = data['rejection_reason'];
           final isApproved = data['is_approved'] == true;
-          final isOffline = data['is_offline'] == true;
+          final isOffline = data['is_offline'] == true; // Вот этот флаг ставится при оффлайн добавлении
 
-          if (tabType == 0) return !isApproved && reason == null && !isOffline; // Ждут одобрения
-          if (tabType == 1) return isOffline; // Не зарегистрированные (Оффлайн)
-          if (tabType == 2) return isApproved; // Зарегистрированные
-          if (tabType == 3) return !isApproved && reason != null; // Отклонённые
+          if (widget.tabType == 0) return !isApproved && reason == null && !isOffline; // Ждут одобрения
+          if (widget.tabType == 1) return isOffline; // Строго оффлайн клиенты
+          if (widget.tabType == 2) return isApproved && !isOffline; // Зарегистрированные (строго с приложением)
+          if (widget.tabType == 3) return !isApproved && reason != null; // Отклоненные
           return false;
         }).toList();
 
@@ -148,7 +129,16 @@ class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStat
         });
 
         if (docs.isEmpty) {
-          return Center(child: Text('Пусто', style: TextStyle(color: Colors.blueGrey[400], fontSize: 16)));
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.group_off_outlined, size: 64, color: Colors.blueGrey[200]),
+                const SizedBox(height: 16),
+                Text('В этой категории пока пусто', style: TextStyle(color: Colors.blueGrey[400], fontSize: 16)),
+              ],
+            ),
+          );
         }
 
         return ListView.builder(
@@ -158,13 +148,14 @@ class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStat
             final doc = docs[index];
             final data = doc.data() as Map<String, dynamic>;
             
-            final isPending = tabType == 0;
-            final isRejected = tabType == 3;
-            final isActive = tabType == 2;
+            final isPending = widget.tabType == 0;
+            final isRejected = widget.tabType == 3;
+            final isActive = widget.tabType == 2;
+            final isOfflineTab = widget.tabType == 1;
+            
             final phone = data['phone'] ?? '';
             final name = data['name'] ?? 'Без имени';
 
-            // ОПРЕДЕЛЯЕМ КНОПКИ СПРАВА
             Widget? trailingWidget;
             if (isPending) {
               trailingWidget = Row(
@@ -183,7 +174,6 @@ class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStat
                 ],
               );
             } else if (isActive && phone.isNotEmpty) {
-              // ❗ КНОПКА ЧАТА ДЛЯ ЗАРЕГИСТРИРОВАННЫХ КЛИЕНТОВ ❗
               trailingWidget = IconButton(
                 icon: const Icon(Icons.chat, color: Colors.blue, size: 28),
                 onPressed: () => _openPrivateChat(context, phone, name),
@@ -199,10 +189,10 @@ class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStat
                 padding: const EdgeInsets.symmetric(vertical: 8.0),
                 child: ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: isActive ? Colors.green[100] : (isRejected ? Colors.red[100] : Colors.orange[100]),
+                    backgroundColor: isActive ? Colors.green[100] : (isRejected ? Colors.red[100] : (isOfflineTab ? Colors.grey[200] : Colors.orange[100])),
                     child: Icon(
-                      isActive ? Icons.person : (isRejected ? Icons.person_off : Icons.person_add),
-                      color: isActive ? Colors.green[700] : (isRejected ? Colors.red[700] : Colors.orange[700]),
+                      isActive ? Icons.verified_user : (isRejected ? Icons.person_off : (isOfflineTab ? Icons.person_outline : Icons.person_add)),
+                      color: isActive ? Colors.green[700] : (isRejected ? Colors.red[700] : (isOfflineTab ? Colors.grey[700] : Colors.orange[700])),
                     ),
                   ),
                   title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
@@ -235,6 +225,14 @@ class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStat
                               Expanded(child: Text('Причина: ${data['rejection_reason'] ?? '-'}', style: const TextStyle(color: Colors.red))),
                             ],
                           ),
+                        if (isOfflineTab)
+                          Row(
+                            children: [
+                              const Icon(Icons.app_blocking, size: 16, color: Colors.grey),
+                              const SizedBox(width: 6),
+                              const Text('Добавлен вручную', style: TextStyle(color: Colors.grey)),
+                            ],
+                          ),
                       ],
                     ),
                   ),
@@ -255,30 +253,9 @@ class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStat
       appBar: AppBar(
         backgroundColor: Colors.blueGrey[900],
         foregroundColor: Colors.white,
-        title: const Text('База клиентов'),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.white,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white54,
-          isScrollable: true, 
-          tabs: const [
-            Tab(text: 'Ждут одобрения'),
-            Tab(text: 'Не зарегистрированные'),
-            Tab(text: 'Зарегистрированные'),
-            Tab(text: 'Отклонённые'),
-          ],
-        ),
+        title: Text(widget.title), // Динамический заголовок без вкладок
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildUsersList(0), 
-          _buildUsersList(1), 
-          _buildUsersList(2), 
-          _buildUsersList(3), 
-        ],
-      ),
+      body: _buildUsersList(), // Показываем только нужный список
     );
   }
 }
