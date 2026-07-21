@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart'; // Подключили плагин для звонков
+import 'package:url_launcher/url_launcher.dart'; 
 import 'private_chat_screen.dart'; 
 import 'import_clients_screen.dart';
+import 'client_profile_screen.dart'; // <--- ПОДКЛЮЧИЛИ ЭКРАН ПРОФИЛЯ
 
 class UsersScreen extends StatefulWidget {
   final int tabType;
@@ -124,7 +125,7 @@ class _UsersScreenState extends State<UsersScreen> {
     }
   }
 
-  // --- ЛОГИКА ДОБАВЛЕНИЯ ОФФЛАЙН КЛИЕНТА ---
+  // --- ЛОГИКА ДОБАВЛЕНИЯ ОФФЛАЙН КЛИЕНТА ВРУЧНУЮ ---
   void _showAddOfflineClientDialog() {
     final nameController = TextEditingController();
     final phoneController = TextEditingController(text: '+993');
@@ -300,10 +301,8 @@ class _UsersScreenState extends State<UsersScreen> {
             final phone = data['phone'] ?? '';
             final name = data['name'] ?? 'Без имени';
 
-            // --- УМНОЕ ФОРМИРОВАНИЕ КНОПОК СПРАВА ---
             List<Widget> trailingActions = [];
 
-            // 1. КНОПКА ЗВОНКА (Добавляется ВСЕМ, у кого есть номер телефона)
             if (phone.isNotEmpty) {
               trailingActions.add(
                 IconButton(
@@ -314,7 +313,6 @@ class _UsersScreenState extends State<UsersScreen> {
               );
             }
 
-            // 2. КНОПКИ ДЕЙСТВИЙ В ЗАВИСИМОСТИ ОТ СТАТУСА
             if (isPending) {
               trailingActions.add(
                 IconButton(
@@ -344,61 +342,81 @@ class _UsersScreenState extends State<UsersScreen> {
               elevation: 2,
               margin: const EdgeInsets.only(bottom: 12),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: isActive ? Colors.green[100] : (isRejected ? Colors.red[100] : (isOfflineTab ? Colors.grey[200] : Colors.orange[100])),
-                    child: Icon(
-                      isActive ? Icons.verified_user : (isRejected ? Icons.person_off : (isOfflineTab ? Icons.person_outline : Icons.person_add)),
-                      color: isActive ? Colors.green[700] : (isRejected ? Colors.red[700] : (isOfflineTab ? Colors.grey[700] : Colors.orange[700])),
+              // --- СДЕЛАЛИ КАРТОЧКУ КЛИКАБЕЛЬНОЙ ---
+              child: InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ClientProfileScreen(
+                        clientId: doc.id,
+                        clientData: data,
+                      ),
                     ),
-                  ),
-                  title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  subtitle: Padding(
-                    padding: const EdgeInsets.only(top: 8.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  );
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: isActive ? Colors.green[100] : (isRejected ? Colors.red[100] : (isOfflineTab ? Colors.grey[200] : Colors.orange[100])),
+                      child: Icon(
+                        isActive ? Icons.verified_user : (isRejected ? Icons.person_off : (isOfflineTab ? Icons.person_outline : Icons.person_add)),
+                        color: isActive ? Colors.green[700] : (isRejected ? Colors.red[700] : (isOfflineTab ? Colors.grey[700] : Colors.orange[700])),
+                      ),
+                    ),
+                    title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.phone, size: 16, color: Colors.blueGrey),
+                              const SizedBox(width: 6),
+                              Text(phone, style: const TextStyle(color: Colors.black87, fontSize: 14)),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          if (isPending)
+                            Row(
+                              children: [
+                                const Icon(Icons.sms, size: 16, color: Colors.deepOrange),
+                                const SizedBox(width: 6),
+                                Text('Код из SMS: ${data['sms_code'] ?? '-'}', style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          if (isRejected)
+                            Row(
+                              children: [
+                                const Icon(Icons.error_outline, size: 16, color: Colors.red),
+                                const SizedBox(width: 6),
+                                Expanded(child: Text('Причина: ${data['rejection_reason'] ?? '-'}', style: const TextStyle(color: Colors.red))),
+                              ],
+                            ),
+                          if (isOfflineTab)
+                            Row(
+                              children: [
+                                const Icon(Icons.app_blocking, size: 16, color: Colors.grey),
+                                const SizedBox(width: 6),
+                                const Text('Добавлен вручную', style: TextStyle(color: Colors.grey)),
+                              ],
+                            ),
+                        ],
+                      ),
+                    ),
+                    // Добавляем к кнопкам стрелочку для индикации перехода
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min, 
                       children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.phone, size: 16, color: Colors.blueGrey),
-                            const SizedBox(width: 6),
-                            Text(phone, style: const TextStyle(color: Colors.black87, fontSize: 14)),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        if (isPending)
-                          Row(
-                            children: [
-                              const Icon(Icons.sms, size: 16, color: Colors.deepOrange),
-                              const SizedBox(width: 6),
-                              Text('Код из SMS: ${data['sms_code'] ?? '-'}', style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                        if (isRejected)
-                          Row(
-                            children: [
-                              const Icon(Icons.error_outline, size: 16, color: Colors.red),
-                              const SizedBox(width: 6),
-                              Expanded(child: Text('Причина: ${data['rejection_reason'] ?? '-'}', style: const TextStyle(color: Colors.red))),
-                            ],
-                          ),
-                        if (isOfflineTab)
-                          Row(
-                            children: [
-                              const Icon(Icons.app_blocking, size: 16, color: Colors.grey),
-                              const SizedBox(width: 6),
-                              const Text('Добавлен вручную', style: TextStyle(color: Colors.grey)),
-                            ],
-                          ),
-                      ],
+                        ...trailingActions,
+                        const SizedBox(width: 4),
+                        const Icon(Icons.chevron_right, color: Colors.grey),
+                      ]
                     ),
                   ),
-                  // Выводим все собранные кнопки в один ряд
-                  trailing: trailingActions.isNotEmpty 
-                      ? Row(mainAxisSize: MainAxisSize.min, children: trailingActions)
-                      : null,
                 ),
               ),
             );
