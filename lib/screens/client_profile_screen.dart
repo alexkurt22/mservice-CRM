@@ -336,6 +336,7 @@ class _ClientProfileScreenState extends State<ClientProfileScreen> {
                                         builder: (_) => OrderDetailsScreen(
                                           orderId: orders[i].id,
                                           orderData: oData,
+                                          fromProfile: true,
                                         ),
                                       ),
                                     );
