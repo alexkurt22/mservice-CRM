@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:intl/intl.dart'; // Пакет для красивой даты (нужно будет добавить в pubspec.yaml)
+import 'package:intl/intl.dart'; 
 import 'private_chat_screen.dart';
+import 'order_details_screen.dart'; // ВАЖНО: Подключили экран деталей заказа!
 
 class ClientProfileScreen extends StatefulWidget {
   final String clientId;
@@ -19,7 +20,6 @@ class _ClientProfileScreenState extends State<ClientProfileScreen> {
   double _averageRating = 0.0;
   int _commentsCount = 0;
 
-  // Функция звонка
   Future<void> _makePhoneCall(String phoneNumber) async {
     final Uri launchUri = Uri(scheme: 'tel', path: phoneNumber);
     if (await canLaunchUrl(launchUri)) {
@@ -29,7 +29,6 @@ class _ClientProfileScreenState extends State<ClientProfileScreen> {
     }
   }
 
-  // Функция открытия чата
   Future<void> _openPrivateChat(String targetPhone, String targetName) async {
     final prefs = await SharedPreferences.getInstance();
     final myPhone = prefs.getString('employee_phone') ?? 'admin';
@@ -54,10 +53,9 @@ class _ClientProfileScreenState extends State<ClientProfileScreen> {
     }
   }
 
-  // Окно добавления комментария с оценкой (От 1 до 5)
   void _showAddCommentDialog() {
     final textController = TextEditingController();
-    int selectedStars = 5; // По умолчанию 5 звезд
+    int selectedStars = 5; 
 
     showDialog(
       context: context,
@@ -127,12 +125,11 @@ class _ClientProfileScreenState extends State<ClientProfileScreen> {
     );
   }
 
-  // Цвет шапки зависит от среднего рейтинга
   Color _getRatingColor(double rating) {
-    if (_commentsCount == 0) return Colors.blueGrey[900]!; // Нет оценок - нейтральный
-    if (rating >= 4.0) return Colors.green[700]!; // Золотой клиент
-    if (rating >= 2.5) return Colors.orange[700]!; // Сложный клиент
-    return Colors.red[800]!; // Токсичный клиент
+    if (_commentsCount == 0) return Colors.blueGrey[900]!; 
+    if (rating >= 4.0) return Colors.green[700]!; 
+    if (rating >= 2.5) return Colors.orange[700]!; 
+    return Colors.red[800]!; 
   }
 
   @override
@@ -143,12 +140,10 @@ class _ClientProfileScreenState extends State<ClientProfileScreen> {
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
-      // Используем StreamBuilder для всей страницы, чтобы шапка меняла цвет онлайн
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('clients').doc(widget.clientId).collection('comments').snapshots(),
         builder: (context, snapshot) {
           
-          // Математика подсчета среднего рейтинга
           if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
             _commentsCount = snapshot.data!.docs.length;
             int totalStars = 0;
@@ -169,7 +164,7 @@ class _ClientProfileScreenState extends State<ClientProfileScreen> {
                 expandedHeight: 220.0,
                 floating: false,
                 pinned: true,
-                backgroundColor: headerColor, // Цвет шапки зависит от рейтинга!
+                backgroundColor: headerColor, 
                 foregroundColor: Colors.white,
                 flexibleSpace: FlexibleSpaceBar(
                   background: SafeArea(
@@ -188,7 +183,6 @@ class _ClientProfileScreenState extends State<ClientProfileScreen> {
                           Text(phone, style: const TextStyle(fontSize: 16, color: Colors.white70)),
                           
                           const SizedBox(height: 8),
-                          // ВЫВОД РЕЙТИНГА
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                             decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(20)),
@@ -217,7 +211,6 @@ class _ClientProfileScreenState extends State<ClientProfileScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // БЛОК БЫСТРЫХ ДЕЙСТВИЙ (Звонок / Чат)
                       Row(
                         children: [
                           Expanded(
@@ -244,7 +237,6 @@ class _ClientProfileScreenState extends State<ClientProfileScreen> {
                       
                       const SizedBox(height: 24),
                       
-                      // БЛОК: ОЦЕНКИ И КОММЕНТАРИИ АДМИНИСТРАТОРОВ
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -268,7 +260,6 @@ class _ClientProfileScreenState extends State<ClientProfileScreen> {
                           physics: const NeverScrollableScrollPhysics(),
                           itemCount: snapshot.data!.docs.length,
                           itemBuilder: (context, index) {
-                            // Сортируем так, чтобы новые были сверху
                             final sortedDocs = snapshot.data!.docs.toList();
                             sortedDocs.sort((a, b) {
                               final aTime = (a.data() as Map<String, dynamic>)['created_at'] as Timestamp?;
@@ -282,7 +273,6 @@ class _ClientProfileScreenState extends State<ClientProfileScreen> {
                             final text = commentData['text'] ?? '';
                             final author = commentData['author'] ?? 'Админ';
                             
-                            // Красивый вывод даты (требует пакета intl)
                             String dateStr = '';
                             if (commentData['created_at'] != null) {
                                final dt = (commentData['created_at'] as Timestamp).toDate();
@@ -306,7 +296,6 @@ class _ClientProfileScreenState extends State<ClientProfileScreen> {
 
                       const SizedBox(height: 24),
 
-                      // БЛОК: ИСТОРИЯ ЗАКАЗОВ
                       const Text('ИСТОРИЯ ЗАКАЗОВ', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
                       const SizedBox(height: 8),
                       StreamBuilder<QuerySnapshot>(
@@ -336,13 +325,35 @@ class _ClientProfileScreenState extends State<ClientProfileScreen> {
                               if (oStatus == 'in_progress') sColor = Colors.orange;
                               if (oStatus == 'completed') sColor = Colors.teal;
 
+                              // --- СДЕЛАЛИ КАРТОЧКУ КЛИКАБЕЛЬНОЙ! ---
                               return Card(
                                 margin: const EdgeInsets.only(bottom: 8),
-                                child: ListTile(
-                                  leading: Icon(Icons.build_circle, color: sColor),
-                                  title: Text(oData['device_type'] ?? 'Устройство', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                  subtitle: Text(oData['problem'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),
-                                  trailing: Text('${oData['price'] ?? '?'} TMT', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                                child: InkWell(
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => OrderDetailsScreen(
+                                          orderId: orders[i].id,
+                                          orderData: oData,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: ListTile(
+                                    leading: Icon(Icons.build_circle, color: sColor),
+                                    title: Text(oData['device_type'] ?? 'Устройство', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                    subtitle: Text(oData['problem'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text('${oData['price'] ?? '?'} TMT', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                                        const SizedBox(width: 8),
+                                        const Icon(Icons.chevron_right, color: Colors.grey), // Индикатор кликабельности
+                                      ],
+                                    ),
+                                  ),
                                 ),
                               );
                             }
