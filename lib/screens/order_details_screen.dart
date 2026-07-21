@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:mservice_crm/services/fcm_service.dart';
-import 'client_profile_screen.dart'; // Подключили новый экран профиля!
+import 'client_profile_screen.dart'; 
 
 class OrderDetailsScreen extends StatefulWidget {
   final String orderId;
   final Map<String, dynamic> orderData;
+  final bool fromProfile; // <--- НОВЫЙ ФЛАГ ДЛЯ ЗАЩИТЫ ОТ БЕСКОНЕЧНОГО ЦИКЛА
 
   const OrderDetailsScreen({
     super.key,
     required this.orderId,
     required this.orderData,
+    this.fromProfile = false, // По умолчанию false
   });
 
   @override
@@ -56,7 +58,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
-  // --- ФУНКЦИЯ ОТКРЫТИЯ ПРОФИЛЯ КЛИЕНТА ---
   Future<void> _openClientProfile() async {
     final String? phone = widget.orderData['phone'];
     if (phone == null || phone.isEmpty) {
@@ -67,7 +68,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Ищем клиента в базе по номеру телефона
       final querySnapshot = await FirebaseFirestore.instance
           .collection('clients')
           .where('phone', isEqualTo: phone)
@@ -87,7 +87,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           );
         }
       } else {
-        // Если клиента нет в базе (старые заказы), создадим временную карточку
         if (mounted) {
           Navigator.push(
             context,
@@ -113,7 +112,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
-  // --- БЫСТРЫЙ СТАРТ РЕМОНТА (ОФФЛАЙН/УСТНО) ---
   Future<void> _showForceStartDialog() async {
     final priceController = TextEditingController();
     final commentController = TextEditingController();
@@ -402,13 +400,15 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // --- КЛИКАБЕЛЬНАЯ КАРТОЧКА КЛИЕНТА (ОТКРЫВАЕТ ПРОФИЛЬ) ---
+                  // --- УМНАЯ КАРТОЧКА КЛИЕНТА (ЗАЩИТА ОТ БЕСКОНЕЧНОГО ЦИКЛА) ---
                   InkWell(
-                    onTap: _openClientProfile,
+                    // Если пришли из профиля, блокируем нажатие
+                    onTap: widget.fromProfile ? null : _openClientProfile,
                     borderRadius: BorderRadius.circular(12),
                     child: Card(
-                      elevation: 2,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: widget.fromProfile ? 0 : 2, // Плоская карточка, если не кликабельна
+                      color: widget.fromProfile ? Colors.grey[100] : Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey[300]!)),
                       child: Padding(
                         padding: const EdgeInsets.all(20.0),
                         child: Column(
@@ -424,7 +424,9 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                                     Text('${widget.orderData['client_name'] ?? 'Без имени'}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
                                   ],
                                 ),
-                                const Icon(Icons.chevron_right, color: Colors.grey), // Индикатор кликабельности
+                                // Показываем стрелочку, только если карточка кликабельна
+                                if (!widget.fromProfile)
+                                  const Icon(Icons.chevron_right, color: Colors.grey), 
                               ],
                             ),
                             const Divider(height: 24),
