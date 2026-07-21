@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:mservice_crm/services/fcm_service.dart';
+import 'client_profile_screen.dart'; // Подключили новый экран профиля!
 
 class OrderDetailsScreen extends StatefulWidget {
   final String orderId;
@@ -55,7 +56,64 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
-  // --- НОВАЯ ФУНКЦИЯ: БЫСТРЫЙ СТАРТ РЕМОНТА (ОФФЛАЙН/УСТНО) ---
+  // --- ФУНКЦИЯ ОТКРЫТИЯ ПРОФИЛЯ КЛИЕНТА ---
+  Future<void> _openClientProfile() async {
+    final String? phone = widget.orderData['phone'];
+    if (phone == null || phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Номер телефона не найден')));
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // Ищем клиента в базе по номеру телефона
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('clients')
+          .where('phone', isEqualTo: phone)
+          .get();
+
+      if (querySnapshot.docs.isNotEmpty) {
+        final clientDoc = querySnapshot.docs.first;
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ClientProfileScreen(
+                clientId: clientDoc.id,
+                clientData: clientDoc.data(),
+              ),
+            ),
+          );
+        }
+      } else {
+        // Если клиента нет в базе (старые заказы), создадим временную карточку
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ClientProfileScreen(
+                clientId: 'unknown_client',
+                clientData: {
+                  'name': widget.orderData['client_name'] ?? 'Без имени',
+                  'phone': phone,
+                  'is_offline': true,
+                },
+              ),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка загрузки профиля: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // --- БЫСТРЫЙ СТАРТ РЕМОНТА (ОФФЛАЙН/УСТНО) ---
   Future<void> _showForceStartDialog() async {
     final priceController = TextEditingController();
     final commentController = TextEditingController();
@@ -122,7 +180,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         'price': price,
         'admin_comment': comment.isNotEmpty ? comment : 'Согласовано устно',
         'has_unread_update': true,
-        // Удаляем варианты, если они были, так как мы согласовали устно
         'options': FieldValue.delete(),
         'selected_option_index': FieldValue.delete(),
       });
@@ -130,7 +187,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Заказ переведен в работу!'), backgroundColor: Colors.green),
         );
-        Navigator.pop(context); // Возвращаемся на Дашборд
+        Navigator.pop(context); 
       }
     } catch (e) {
       if (mounted) {
@@ -140,7 +197,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
-  // -------------------------------------------------------------
 
   Future<void> _updateStatus(String newStatus, {bool isAwaitingApproval = false, bool isBargainingMode = false}) async {
     setState(() => _isLoading = true);
@@ -346,52 +402,62 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // --- КАРТОЧКА КЛИЕНТА ---
-                  Card(
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.person, color: Colors.blueGrey[400]),
-                              const SizedBox(width: 8),
-                              Text('${widget.orderData['client_name'] ?? 'Без имени'}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-                            ],
-                          ),
-                          const Divider(height: 24),
-                          Row(
-                            children: [
-                              const Icon(Icons.phone, size: 18, color: Colors.grey),
-                              const SizedBox(width: 8),
-                              Text('${widget.orderData['phone'] ?? 'Не указан'}', style: const TextStyle(fontSize: 16)),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              const Icon(Icons.devices, size: 18, color: Colors.grey),
-                              const SizedBox(width: 8),
-                              Text('${widget.orderData['device_type'] ?? 'Не указана'}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(color: Colors.orange[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.orange[200]!)),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                  // --- КЛИКАБЕЛЬНАЯ КАРТОЧКА КЛИЕНТА (ОТКРЫВАЕТ ПРОФИЛЬ) ---
+                  InkWell(
+                    onTap: _openClientProfile,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Card(
+                      elevation: 2,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      child: Padding(
+                        padding: const EdgeInsets.all(20.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Icon(Icons.warning_amber_rounded, color: Colors.deepOrange, size: 20),
-                                const SizedBox(width: 8),
-                                Expanded(child: Text('${widget.orderData['problem'] ?? 'Не указана'}', style: const TextStyle(fontSize: 15, color: Colors.black87))),
+                                Row(
+                                  children: [
+                                    Icon(Icons.person, color: Colors.blueGrey[400]),
+                                    const SizedBox(width: 8),
+                                    Text('${widget.orderData['client_name'] ?? 'Без имени'}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                                  ],
+                                ),
+                                const Icon(Icons.chevron_right, color: Colors.grey), // Индикатор кликабельности
                               ],
                             ),
-                          ),
-                        ],
+                            const Divider(height: 24),
+                            Row(
+                              children: [
+                                const Icon(Icons.phone, size: 18, color: Colors.grey),
+                                const SizedBox(width: 8),
+                                Text('${widget.orderData['phone'] ?? 'Не указан'}', style: const TextStyle(fontSize: 16)),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                const Icon(Icons.devices, size: 18, color: Colors.grey),
+                                const SizedBox(width: 8),
+                                Text('${widget.orderData['device_type'] ?? 'Не указана'}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(color: Colors.orange[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.orange[200]!)),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(Icons.warning_amber_rounded, color: Colors.deepOrange, size: 20),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: Text('${widget.orderData['problem'] ?? 'Не указана'}', style: const TextStyle(fontSize: 15, color: Colors.black87))),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -399,9 +465,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
 
                   _buildHistoryBlock(widget.orderData), 
 
-                  // --- ЭКРАН НОВОГО ЗАКАЗА (ОЦЕНКА) ---
                   if (status == 'new') ...[
-                    // --- НОВАЯ КНОПКА ДЛЯ УСТНОГО СОГЛАСОВАНИЯ ---
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -425,7 +489,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    // -----------------------------------------------
 
                     const Text('Оценка ремонта (Варианты для приложения):', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
                     const SizedBox(height: 12),
@@ -506,7 +569,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     ),
                   ],
 
-                  // --- ЭКРАН ОЖИДАНИЯ КЛИЕНТА ---
                   if (status == 'awaiting_approval') ...[
                     Container(
                       padding: const EdgeInsets.all(16),
@@ -521,7 +583,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     ),
                     const SizedBox(height: 24),
                     
-                    // --- НОВАЯ КНОПКА ДЛЯ УСТНОГО СОГЛАСОВАНИЯ (На случай если клиент перезвонил) ---
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -534,7 +595,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                       label: const Text('ПРИНЯТЬ В РАБОТУ (УСТНО)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     ),
                     const SizedBox(height: 24),
-                    // -------------------------------------------------------------------------------
 
                     if (widget.orderData.containsKey('options')) ...[
                       const Text('Предложенные варианты:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueGrey)),
@@ -565,7 +625,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     ),
                   ],
 
-                  // --- ЭКРАН В РАБОТЕ ---
                   if (status == 'in_progress') ...[
                     Container(
                       padding: const EdgeInsets.all(16),
@@ -589,11 +648,10 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                       ),
                       onPressed: () => _updateStatus('completed'),
                       icon: const Icon(Icons.task_alt, color: Colors.white),
-                      label: const Text('РЕМОНТ ЗАВЕРШЕН (ГОТОВО К ВЫДАЧИ)', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
+                      label: const Text('РЕМОНТ ЗАВЕРШЕН (ГОТОВО К ВЫДАЧЕ)', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
                     ),
                   ],
 
-                  // --- ЭКРАН ЗАВЕРШЕН ---
                   if (status == 'completed') ...[
                     Container(
                       padding: const EdgeInsets.all(16),
@@ -610,7 +668,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     _buildAuditTrail(widget.orderData),
                   ],
 
-                  // --- ЭКРАН ОТМЕНЕН (С ВОРОНКОЙ УДЕРЖАНИЯ) ---
                   if (status == 'canceled') ...[
                     if (!_isBargaining) ...[
                       Container(
@@ -644,7 +701,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                       ],
                       const SizedBox(height: 32),
                       
-                      // КНОПКА ВОРОНКИ УДЕРЖАНИЯ
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.blue[600],
@@ -663,7 +719,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                         label: const Text('ПРЕДЛОЖИТЬ НОВЫЕ УСЛОВИЯ (ТОРГ)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                       ),
                     ] else ...[
-                      // --- ИНТЕРФЕЙС ТОРГА ---
                       const Text('Новые варианты ремонта (Скидка / БУ деталь):', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
                       const SizedBox(height: 12),
                       ListView.builder(
@@ -753,3 +808,4 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     );
   }
 }
+
