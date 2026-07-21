@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart'; // Подключили плагин для звонков
 import 'private_chat_screen.dart'; 
 import 'import_clients_screen.dart';
 
@@ -19,6 +20,31 @@ class UsersScreen extends StatefulWidget {
 }
 
 class _UsersScreenState extends State<UsersScreen> {
+
+  // --- ЛОГИКА ЗВОНКА ---
+  Future<void> _makePhoneCall(String phoneNumber) async {
+    final Uri launchUri = Uri(
+      scheme: 'tel',
+      path: phoneNumber,
+    );
+    try {
+      if (await canLaunchUrl(launchUri)) {
+        await launchUrl(launchUri);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Не удалось открыть звонилку на этом устройстве')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка вызова: $e')),
+        );
+      }
+    }
+  }
 
   void _approveUser(String docId) {
     FirebaseFirestore.instance.collection('clients').doc(docId).update({
@@ -98,7 +124,7 @@ class _UsersScreenState extends State<UsersScreen> {
     }
   }
 
-  // --- ЛОГИКА ДОБАВЛЕНИЯ ОФФЛАЙН КЛИЕНТА ВРУЧНУЮ (ОБНОВЛЕННАЯ С ЖИВОЙ ПРОВЕРКОЙ) ---
+  // --- ЛОГИКА ДОБАВЛЕНИЯ ОФФЛАЙН КЛИЕНТА ---
   void _showAddOfflineClientDialog() {
     final nameController = TextEditingController();
     final phoneController = TextEditingController(text: '+993');
@@ -113,7 +139,6 @@ class _UsersScreenState extends State<UsersScreen> {
         return StatefulBuilder(
           builder: (context, setModalState) {
             
-            // Функция проверки номера на лету
             void checkPhone(String currentPhone) async {
               if (currentPhone.length < 11) {
                 setModalState(() => warningMessage = '');
@@ -140,7 +165,6 @@ class _UsersScreenState extends State<UsersScreen> {
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // 1. СНАЧАЛА НОМЕР ТЕЛЕФОНА
                   TextField(
                     controller: phoneController,
                     decoration: InputDecoration(
@@ -149,10 +173,9 @@ class _UsersScreenState extends State<UsersScreen> {
                       suffixIcon: isChecking ? const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(strokeWidth: 2)) : null,
                     ),
                     keyboardType: TextInputType.phone,
-                    onChanged: checkPhone, // Проверяем на лету!
+                    onChanged: checkPhone, 
                   ),
                   
-                  // ПОКАЗЫВАЕМ ОШИБКУ, ЕСЛИ НОМЕР НАЙДЕН
                   if (warningMessage.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 8.0),
@@ -161,7 +184,6 @@ class _UsersScreenState extends State<UsersScreen> {
 
                   const SizedBox(height: 16),
                   
-                  // 2. ЗАТЕМ ИМЯ
                   TextField(
                     controller: nameController,
                     decoration: const InputDecoration(
@@ -180,7 +202,6 @@ class _UsersScreenState extends State<UsersScreen> {
                   ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: warningMessage.isNotEmpty ? Colors.grey : Colors.blueGrey[900]),
-                  // Блокируем кнопку, если номер уже есть в базе
                   onPressed: (isSaving || warningMessage.isNotEmpty) ? null : () async {
                     final name = nameController.text.trim();
                     final phone = phoneController.text.trim();
@@ -279,28 +300,43 @@ class _UsersScreenState extends State<UsersScreen> {
             final phone = data['phone'] ?? '';
             final name = data['name'] ?? 'Без имени';
 
-            Widget? trailingWidget;
+            // --- УМНОЕ ФОРМИРОВАНИЕ КНОПОК СПРАВА ---
+            List<Widget> trailingActions = [];
+
+            // 1. КНОПКА ЗВОНКА (Добавляется ВСЕМ, у кого есть номер телефона)
+            if (phone.isNotEmpty) {
+              trailingActions.add(
+                IconButton(
+                  icon: const Icon(Icons.phone_in_talk, color: Colors.teal),
+                  onPressed: () => _makePhoneCall(phone),
+                  tooltip: 'Позвонить',
+                )
+              );
+            }
+
+            // 2. КНОПКИ ДЕЙСТВИЙ В ЗАВИСИМОСТИ ОТ СТАТУСА
             if (isPending) {
-              trailingWidget = Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.check_circle, color: Colors.green, size: 32),
-                    onPressed: () => _approveUser(doc.id),
-                    tooltip: 'Одобрить',
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.cancel, color: Colors.red, size: 32),
-                    onPressed: () => _rejectUser(context, doc.id),
-                    tooltip: 'Отклонить',
-                  ),
-                ],
+              trailingActions.add(
+                IconButton(
+                  icon: const Icon(Icons.check_circle, color: Colors.green),
+                  onPressed: () => _approveUser(doc.id),
+                  tooltip: 'Одобрить',
+                )
+              );
+              trailingActions.add(
+                IconButton(
+                  icon: const Icon(Icons.cancel, color: Colors.red),
+                  onPressed: () => _rejectUser(context, doc.id),
+                  tooltip: 'Отклонить',
+                )
               );
             } else if (isActive && phone.isNotEmpty) {
-              trailingWidget = IconButton(
-                icon: const Icon(Icons.chat, color: Colors.blue, size: 28),
-                onPressed: () => _openPrivateChat(context, phone, name),
-                tooltip: 'Написать сообщение',
+              trailingActions.add(
+                IconButton(
+                  icon: const Icon(Icons.chat, color: Colors.blue),
+                  onPressed: () => _openPrivateChat(context, phone, name),
+                  tooltip: 'Написать сообщение',
+                )
               );
             }
 
@@ -359,7 +395,10 @@ class _UsersScreenState extends State<UsersScreen> {
                       ],
                     ),
                   ),
-                  trailing: trailingWidget,
+                  // Выводим все собранные кнопки в один ряд
+                  trailing: trailingActions.isNotEmpty 
+                      ? Row(mainAxisSize: MainAxisSize.min, children: trailingActions)
+                      : null,
                 ),
               ),
             );
