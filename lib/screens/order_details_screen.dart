@@ -204,7 +204,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         'has_unread_update': true,
       };
 
-      // ---> ЕДИНСТВЕННОЕ НОВОЕ ИЗМЕНЕНИЕ: СОХРАНЕНИЕ ДАТЫ ГОТОВНОСТИ ДЛЯ ГАРАНТИИ <---
       if (newStatus == 'completed') {
         updateData['completed_at'] = FieldValue.serverTimestamp(); 
       }
@@ -253,10 +252,12 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           if (clientDoc.exists && clientDoc.data() != null) {
             String? fcmToken = clientDoc.data()!['fcm_token'];
             if (fcmToken != null) {
+              // ЗДЕСЬ ИСПРАВЛЕНА ОШИБКА АРГУМЕНТОВ
               await FCMService.sendPushNotification(
-                token: fcmToken,
-                title: isBargainingMode ? 'Новое предложение от мастера!' : 'Заказ ожидает согласования',
-                body: isBargainingMode ? 'Мастер предложил новые условия ремонта. Ознакомьтесь!' : 'Мастер предложил варианты ремонта. Выберите подходящий.',
+                fcmToken,
+                isBargainingMode ? 'Новое предложение от мастера!' : 'Заказ ожидает согласования',
+                isBargainingMode ? 'Мастер предложил новые условия ремонта. Ознакомьтесь!' : 'Мастер предложил варианты ремонта. Выберите подходящий.',
+                'negotiation'
               );
             }
           }
