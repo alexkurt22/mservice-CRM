@@ -4,7 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'categories_management_screen.dart'; 
 import 'login_screen.dart'; 
 import 'employees_management_screen.dart'; 
-import 'bonus_distribution_screen.dart'; // <--- ПОДКЛЮЧИЛИ НАШ НОВЫЙ ЭКРАН
+import 'bonus_distribution_screen.dart';
+import 'reviews_management_screen.dart'; // <--- ИМПОРТ ЭКРАНА МОДЕРАЦИИ ОТЗЫВОВ
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -127,9 +128,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const Divider(),
 
+                // --- КНОПКА МОДЕРАЦИИ ОТЗЫВОВ ---
+                ListTile(
+                  leading: const Icon(Icons.forum, color: Colors.blueGrey),
+                  title: const Text('Модерация отзывов'),
+                  subtitle: const Text('Проверка и публикация оценок клиентов'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const ReviewsManagementScreen()));
+                  },
+                ),
+                const Divider(),
+
                 _buildSectionHeader('СИСТЕМА ЛОЯЛЬНОСТИ'),
                 
-                // --- КНОПКА ПЕРЕХОДА К МАССОВОЙ РАССЫЛКЕ ---
                 Card(
                   elevation: 1,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -225,4 +237,3 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
-
