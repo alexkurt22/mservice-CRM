@@ -4,70 +4,17 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class ReviewsManagementScreen extends StatelessWidget {
   const ReviewsManagementScreen({super.key});
 
-  // --- 1. ОПУБЛИКОВАТЬ ---
   void _approveReview(BuildContext context, String docId) async {
     await FirebaseFirestore.instance.collection('reviews').doc(docId).update({
       'is_approved': true,
-      'needs_edit': false, // Снимаем флаг доработки, если он был
+      'needs_edit': FieldValue.delete(),
+      'admin_message': FieldValue.delete(),
     });
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Отзыв опубликован!'), backgroundColor: Colors.green));
     }
   }
 
-  // --- 2. ОТПРАВИТЬ НА РЕДАКТИРОВАНИЕ ---
-  void _sendForEditDialog(BuildContext context, String docId) {
-    final reasonController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(children: [Icon(Icons.edit_note, color: Colors.orange), SizedBox(width: 8), Text('На доработку')]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Укажите причину для клиента:', style: TextStyle(fontSize: 13, color: Colors.blueGrey)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: reasonController,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                hintText: 'Например: Пожалуйста, уберите мат из текста...',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена', style: TextStyle(color: Colors.grey))),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange[700], foregroundColor: Colors.white),
-            onPressed: () async {
-              final reason = reasonController.text.trim();
-              if (reason.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Укажите причину!'), backgroundColor: Colors.red));
-                return;
-              }
-              
-              await FirebaseFirestore.instance.collection('reviews').doc(docId).update({
-                'needs_edit': true,
-                'admin_message': reason,
-                'is_approved': false,
-              });
-              
-              if (context.mounted) {
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Отправлено клиенту на доработку!'), backgroundColor: Colors.orange));
-              }
-            },
-            child: const Text('Отправить'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- 3. УДАЛИТЬ ---
   void _deleteReview(BuildContext context, String docId) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -129,15 +76,13 @@ class ReviewsManagementScreen extends StatelessWidget {
             final text = data['text'] ?? '';
             final author = data['author_name'] ?? 'Клиент';
             final device = data['device_type'] ?? '';
-            final bool needsEdit = data['needs_edit'] ?? false;
-            final String adminMessage = data['admin_message'] ?? '';
 
             return Card(
               margin: const EdgeInsets.only(bottom: 16),
               elevation: 2,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: isApproved ? Colors.green.shade200 : (needsEdit ? Colors.orange.shade400 : Colors.blue.shade200), width: 1.5),
+                side: BorderSide(color: isApproved ? Colors.green.shade200 : Colors.blue.shade200, width: 1.5),
               ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -161,24 +106,6 @@ class ReviewsManagementScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
 
-                    // Показываем плашку, если отзыв уже был отправлен на доработку
-                    if (needsEdit) ...[
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(color: Colors.orange[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.orange.shade200)),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(Icons.info_outline, color: Colors.orange, size: 20),
-                            const SizedBox(width: 8),
-                            Expanded(child: Text('Ждет исправления от клиента:\n"$adminMessage"', style: TextStyle(color: Colors.orange[800], fontSize: 13, fontWeight: FontWeight.bold))),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-
-                    // Кнопки управления (Используем Wrap, чтобы кнопки не вылезали за экран на узких телефонах)
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
@@ -191,12 +118,6 @@ class ReviewsManagementScreen extends StatelessWidget {
                           tooltip: 'Удалить',
                         ),
                         if (!isApproved) ...[
-                          OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(foregroundColor: Colors.orange[800], side: BorderSide(color: Colors.orange.shade300)),
-                            onPressed: () => _sendForEditDialog(context, doc.id),
-                            icon: const Icon(Icons.edit),
-                            label: const Text('На доработку'),
-                          ),
                           ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(backgroundColor: Colors.green[600], foregroundColor: Colors.white),
                             onPressed: () => _approveReview(context, doc.id),
@@ -238,8 +159,8 @@ class ReviewsManagementScreen extends StatelessWidget {
         ),
         body: TabBarView(
           children: [
-            _buildReviewsList(false), // Неодобренные
-            _buildReviewsList(true),  // Одобренные
+            _buildReviewsList(false), 
+            _buildReviewsList(true), 
           ],
         ),
       ),
