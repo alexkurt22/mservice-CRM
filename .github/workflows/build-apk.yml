@@ -35,27 +35,22 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Fix Android SDK versions
+      - name: Fix Android SDK versions (for share_plus)
         run: |
-          # 1. Принудительно ставим compileSdk 36 для всех скачанных пакетов (чтобы file_picker не ругался)
           find /home/runner/.pub-cache/hosted -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion 33/compileSdkVersion 36/g' {} +
           find /home/runner/.pub-cache/hosted -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion 34/compileSdkVersion 36/g' {} +
           find /home/runner/.pub-cache/hosted -name "build.gradle" -type f -exec sed -i 's/compileSdk 33/compileSdk 36/g' {} +
           find /home/runner/.pub-cache/hosted -name "build.gradle" -type f -exec sed -i 's/compileSdk 34/compileSdk 36/g' {} +
-          
-          # 2. Принудительно ставим compileSdk 36 в самом проекте (заменяем и переменные, и старые цифры)
           sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/g' android/app/build.gradle 2>/dev/null || true
           sed -i 's/compileSdkVersion 33/compileSdkVersion 36/g' android/app/build.gradle 2>/dev/null || true
           sed -i 's/compileSdkVersion 34/compileSdkVersion 36/g' android/app/build.gradle 2>/dev/null || true
           sed -i 's/compileSdk = 33/compileSdk = 36/g' android/app/build.gradle.kts 2>/dev/null || true
           sed -i 's/compileSdk = 34/compileSdk = 36/g' android/app/build.gradle.kts 2>/dev/null || true
-          
-          # 3. targetSdk оставляем 34 (этого требует Google Play)
           sed -i 's/targetSdkVersion flutter.targetSdkVersion/targetSdkVersion 34/g' android/app/build.gradle 2>/dev/null || true
           sed -i 's/targetSdkVersion 33/targetSdkVersion 34/g' android/app/build.gradle 2>/dev/null || true
           sed -i 's/targetSdk = 33/targetSdk = 34/g' android/app/build.gradle.kts 2>/dev/null || true
 
-      # --- ИНЪЕКЦИЯ СЕКРЕТОВ И ПОСТОЯННОГО КЛЮЧА ---
+      # --- ИНЪЕКЦИЯ СЕКРЕТОВ И САМОДИАГНОСТИКА КЛЮЧА ---
       - name: Inject Secret Keys and Permanent Keystore
         env:
           FIREBASE_SECRET: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
@@ -64,10 +59,32 @@ jobs:
           mkdir -p assets
           echo "$FIREBASE_SECRET" | base64 -d > assets/firebase_credentials.json
           
-          # БРОНЕБОЙНАЯ РАСШИФРОВКА: удаляем все пробелы и переносы перед конвертацией!
-          echo "$KEYSTORE_SECRET" | tr -d '\n\r ' | base64 -d > android/app/upload-keystore.jks
+          # 1. Проверка существования секрета
+          if [ -z "$KEYSTORE_SECRET" ]; then
+            echo "🛑 ОШИБКА: Секрет KEYSTORE_BASE64 пустой! Проверь название в настройках."
+            exit 1
+          fi
           
-          # Универсальный скрипт настройки подписи
+          # 2. Бронебойная расшифровка (удаляем перенос строки и мусор)
+          echo -n "$KEYSTORE_SECRET" | tr -d '\n\r ' | base64 -d -i > android/app/upload-keystore.jks
+          
+          # 3. Защита от обрезанного ключа
+          FILESIZE=$(stat -c%s "android/app/upload-keystore.jks")
+          echo "Размер файла ключа: $FILESIZE байт"
+          if [ "$FILESIZE" -lt 1500 ]; then
+            echo "🛑 ОШИБКА: Файл ключа обрезался ($FILESIZE байт)! Скопируй текст из keystore_base64.txt полностью."
+            exit 1
+          fi
+          
+          # 4. Проверка целостности ключа
+          if ! keytool -list -keystore android/app/upload-keystore.jks -storepass "mservice123"; then
+             echo "🛑 ОШИБКА: Ключ поврежден! Текст был скопирован с ошибкой."
+             exit 1
+          fi
+          
+          echo "✅ КЛЮЧ ИДЕАЛЕН! ПРОДОЛЖАЕМ СБОРКУ..."
+          
+          # Умный скрипт настройки подписи
           cat << 'EOF' > setup_signing.dart
           import 'dart:io';
           void main() {
@@ -105,10 +122,11 @@ jobs:
         run: |
           export TZ="Asia/Ashgabat"
           BUILD_TIME=$(date +'%d-%m-%Y_%H-%M')
-          NEW_NAME="MService_CRM_${BUILD_TIME}.apk"
+          # Название будет: MService_CRM_v1.0.123_22-07-2024_15-30.apk
+          NEW_NAME="MService_CRM_v1.0.${{ github.run_number }}_${BUILD_TIME}.apk"
           mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/$NEW_NAME
           echo "FINAL_APK_NAME=$NEW_NAME" >> $GITHUB_ENV
-          echo "FINAL_ZIP_NAME=MService_CRM_${BUILD_TIME}" >> $GITHUB_ENV
+          echo "FINAL_ZIP_NAME=MService_CRM_v1.0.${{ github.run_number }}_${BUILD_TIME}" >> $GITHUB_ENV
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
