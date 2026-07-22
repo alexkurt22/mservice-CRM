@@ -64,10 +64,10 @@ jobs:
           mkdir -p assets
           echo "$FIREBASE_SECRET" | base64 -d > assets/firebase_credentials.json
           
-          # Расшифровываем наш постоянный ключ для подписи
-          echo "$KEYSTORE_SECRET" | base64 -d > android/app/upload-keystore.jks
+          # БРОНЕБОЙНАЯ РАСШИФРОВКА: удаляем все пробелы и переносы перед конвертацией!
+          echo "$KEYSTORE_SECRET" | tr -d '\n\r ' | base64 -d > android/app/upload-keystore.jks
           
-          # Универсальный скрипт настройки подписи для Groovy и Kotlin DSL
+          # Универсальный скрипт настройки подписи
           cat << 'EOF' > setup_signing.dart
           import 'dart:io';
           void main() {
@@ -115,3 +115,4 @@ jobs:
         with:
           name: ${{ env.FINAL_ZIP_NAME }}
           path: build/app/outputs/flutter-apk/${{ env.FINAL_APK_NAME }}
+
