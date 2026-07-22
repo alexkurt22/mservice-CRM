@@ -41,7 +41,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadSettings() async {
     try {
-      // 1. Загрузка правил лояльности
       final loyaltyDoc = await FirebaseFirestore.instance.collection('settings').doc('loyalty').get();
       if (loyaltyDoc.exists && loyaltyDoc.data() != null) {
         final data = loyaltyDoc.data()!;
@@ -52,7 +51,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _discountController.text = '30';
       }
 
-      // 2. Загрузка правил пуш-уведомлений
       final pushDoc = await FirebaseFirestore.instance.collection('settings').doc('notifications').get();
       if (pushDoc.exists && pushDoc.data() != null) {
         final data = pushDoc.data()!;
@@ -82,14 +80,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final db = FirebaseFirestore.instance;
       WriteBatch batch = db.batch();
 
-      // Запись лояльности
       batch.set(db.collection('settings').doc('loyalty'), {
         'welcome_points': welcome,
         'max_discount_percent': discount,
         'updated_at': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // Запись настроек пушей (наш глобальный рубильник)
       batch.set(db.collection('settings').doc('notifications'), {
         'push_on_negotiation': _pushOnNegotiation,
         'push_on_bonus': _pushOnBonus,
@@ -180,7 +176,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           value: _pushOnNegotiation,
                           onChanged: (val) => setState(() => _pushOnNegotiation = val),
                         ),
-                        const Divider(horizontalMargin: 16),
+                        const Divider(indent: 16, endIndent: 16),
                         SwitchListTile(
                           title: const Text('Начисление баллов', style: TextStyle(fontWeight: FontWeight.bold)),
                           subtitle: const Text('Уведомление при раздаче подарков'),
@@ -188,7 +184,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           value: _pushOnBonus,
                           onChanged: (val) => setState(() => _pushOnBonus = val),
                         ),
-                        const Divider(horizontalMargin: 16),
+                        const Divider(indent: 16, endIndent: 16),
                         SwitchListTile(
                           title: const Text('Чат поддержки', style: TextStyle(fontWeight: FontWeight.bold)),
                           subtitle: const Text('Новые сообщения от администратора'),
@@ -247,7 +243,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 20),
 
-                // Глобальная кнопка сохранения
                 SizedBox(
                   width: double.infinity,
                   height: 50,
@@ -294,3 +289,4 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
+
