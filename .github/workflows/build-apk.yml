@@ -55,15 +55,51 @@ jobs:
           sed -i 's/targetSdkVersion 33/targetSdkVersion 34/g' android/app/build.gradle 2>/dev/null || true
           sed -i 's/targetSdk = 33/targetSdk = 34/g' android/app/build.gradle.kts 2>/dev/null || true
 
-      - name: Inject Secret Keys
+      # --- ИНЪЕКЦИЯ СЕКРЕТОВ И ПОСТОЯННОГО КЛЮЧА ---
+      - name: Inject Secret Keys and Permanent Keystore
         env:
           FIREBASE_SECRET: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          KEYSTORE_SECRET: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
           mkdir -p assets
           echo "$FIREBASE_SECRET" | base64 -d > assets/firebase_credentials.json
+          
+          # Расшифровываем наш постоянный ключ для подписи
+          echo "$KEYSTORE_SECRET" | base64 -d > android/app/upload-keystore.jks
+          
+          # Универсальный скрипт настройки подписи для Groovy и Kotlin DSL
+          cat << 'EOF' > setup_signing.dart
+          import 'dart:io';
+          void main() {
+            var kts = File('android/app/build.gradle.kts');
+            var gradle = File('android/app/build.gradle');
+            if (kts.existsSync()) {
+              var text = kts.readAsStringSync();
+              text = text.replaceFirst(
+                'buildTypes {',
+                'signingConfigs {\n        create("release") {\n            storeFile = file("upload-keystore.jks")\n            storePassword = "mservice123"\n            keyAlias = "upload"\n            keyPassword = "mservice123"\n        }\n    }\n    buildTypes {'
+              );
+              text = text.replaceAll('signingConfigs.getByName("debug")', 'signingConfigs.getByName("release")');
+              text = text.replaceAll('signingConfig = signingConfigs.debug', 'signingConfig = signingConfigs.getByName("release")');
+              kts.writeAsStringSync(text);
+              print('Configured Kotlin DSL (build.gradle.kts)');
+            } else if (gradle.existsSync()) {
+              var text = gradle.readAsStringSync();
+              text = text.replaceFirst(
+                'buildTypes {',
+                'signingConfigs {\n        release {\n            storeFile file("upload-keystore.jks")\n            storePassword "mservice123"\n            keyAlias "upload"\n            keyPassword "mservice123"\n        }\n    }\n    buildTypes {'
+              );
+              text = text.replaceAll('signingConfig signingConfigs.debug', 'signingConfig signingConfigs.release');
+              gradle.writeAsStringSync(text);
+              print('Configured Groovy (build.gradle)');
+            }
+          }
+          EOF
+          dart setup_signing.dart
 
+      # --- СБОРКА С АВТО-ПОВЫШЕНИЕМ ВЕРСИИ ---
       - name: Build APK
-        run: flutter build apk --release
+        run: flutter build apk --release --build-name=1.0.${{ github.run_number }} --build-number=${{ github.run_number }}
 
       - name: Rename APK with Date and Time
         run: |
