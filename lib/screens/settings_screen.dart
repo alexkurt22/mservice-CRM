@@ -18,6 +18,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _welcomeController = TextEditingController();
   final TextEditingController _discountController = TextEditingController();
 
+  // Состояние галочек для пушей
+  bool _pushOnNegotiation = true;
+  bool _pushOnBonus = true;
+  bool _pushOnChat = true;
+
   bool _isLoading = true;
   bool _isSaving = false;
 
@@ -36,14 +41,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadSettings() async {
     try {
-      final doc = await FirebaseFirestore.instance.collection('settings').doc('loyalty').get();
-      if (doc.exists && doc.data() != null) {
-        final data = doc.data()!;
+      // 1. Загрузка правил лояльности
+      final loyaltyDoc = await FirebaseFirestore.instance.collection('settings').doc('loyalty').get();
+      if (loyaltyDoc.exists && loyaltyDoc.data() != null) {
+        final data = loyaltyDoc.data()!;
         _welcomeController.text = (data['welcome_points'] ?? 10).toString();
         _discountController.text = (data['max_discount_percent'] ?? 30).toString();
       } else {
         _welcomeController.text = '10';
         _discountController.text = '30';
+      }
+
+      // 2. Загрузка правил пуш-уведомлений
+      final pushDoc = await FirebaseFirestore.instance.collection('settings').doc('notifications').get();
+      if (pushDoc.exists && pushDoc.data() != null) {
+        final data = pushDoc.data()!;
+        setState(() {
+          _pushOnNegotiation = data['push_on_negotiation'] ?? true;
+          _pushOnBonus = data['push_on_bonus'] ?? true;
+          _pushOnChat = data['push_on_chat'] ?? true;
+        });
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка загрузки: $e')));
@@ -52,7 +69,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _saveSettings() async {
+  Future<void> _saveAllSettings() async {
     setState(() => _isSaving = true);
     
     int welcome = int.tryParse(_welcomeController.text.trim()) ?? 10;
@@ -62,14 +79,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (discount < 0) discount = 0;
 
     try {
-      await FirebaseFirestore.instance.collection('settings').doc('loyalty').set({
+      final db = FirebaseFirestore.instance;
+      WriteBatch batch = db.batch();
+
+      // Запись лояльности
+      batch.set(db.collection('settings').doc('loyalty'), {
         'welcome_points': welcome,
         'max_discount_percent': discount,
         'updated_at': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
+      // Запись настроек пушей (наш глобальный рубильник)
+      batch.set(db.collection('settings').doc('notifications'), {
+        'push_on_negotiation': _pushOnNegotiation,
+        'push_on_bonus': _pushOnBonus,
+        'push_on_chat': _pushOnChat,
+        'updated_at': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      await batch.commit();
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Настройки успешно сохранены!'), backgroundColor: Colors.green));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Все настройки успешно сохранены!'), backgroundColor: Colors.green));
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка сохранения: $e'), backgroundColor: Colors.red));
@@ -133,8 +164,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const Divider(),
 
+                // --- ЦЕНТР УПРАВЛЕНИЯ УВЕДОМЛЕНИЯМИ ---
+                _buildSectionHeader('УПРАВЛЕНИЕ УВЕДОМЛЕНИЯМИ'),
+                Card(
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Column(
+                      children: [
+                        SwitchListTile(
+                          title: const Text('Согласование ремонта', style: TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: const Text('Отправка цен и вариантов клиенту'),
+                          activeColor: Colors.orange,
+                          value: _pushOnNegotiation,
+                          onChanged: (val) => setState(() => _pushOnNegotiation = val),
+                        ),
+                        const Divider(horizontalMargin: 16),
+                        SwitchListTile(
+                          title: const Text('Начисление баллов', style: TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: const Text('Уведомление при раздаче подарков'),
+                          activeColor: Colors.orange,
+                          value: _pushOnBonus,
+                          onChanged: (val) => setState(() => _pushOnBonus = val),
+                        ),
+                        const Divider(horizontalMargin: 16),
+                        SwitchListTile(
+                          title: const Text('Чат поддержки', style: TextStyle(fontWeight: FontWeight.bold)),
+                          subtitle: const Text('Новые сообщения от администратора'),
+                          activeColor: Colors.orange,
+                          value: _pushOnChat,
+                          onChanged: (val) => setState(() => _pushOnChat = val),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const Divider(),
+
                 _buildSectionHeader('СИСТЕМА ЛОЯЛЬНОСТИ'),
-                
                 Card(
                   elevation: 1,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -173,19 +241,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           keyboardType: TextInputType.number,
                           decoration: const InputDecoration(labelText: 'Макс. % оплаты баллами', prefixIcon: Icon(Icons.percent, color: Colors.blue), border: OutlineInputBorder()),
                         ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 50,
-                          child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey[900], shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                            onPressed: _isSaving ? null : _saveSettings,
-                            icon: _isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.save, color: Colors.white),
-                            label: Text(_isSaving ? 'Сохранение...' : 'СОХРАНИТЬ ПРАВИЛА', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                          ),
-                        ),
                       ],
                     ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Глобальная кнопка сохранения
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey[900], shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    onPressed: _isSaving ? null : _saveAllSettings,
+                    icon: _isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.save, color: Colors.white),
+                    label: Text(_isSaving ? 'Сохранение...' : 'СОХРАНИТЬ ВСЕ НАСТРОЙКИ', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
                 ),
                 const Divider(),
