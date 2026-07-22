@@ -5,7 +5,7 @@ import 'categories_management_screen.dart';
 import 'login_screen.dart'; 
 import 'employees_management_screen.dart'; 
 import 'bonus_distribution_screen.dart';
-import 'reviews_management_screen.dart'; // <--- ИМПОРТ ЭКРАНА МОДЕРАЦИИ ОТЗЫВОВ
+import 'reviews_management_screen.dart'; 
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -16,7 +16,6 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _welcomeController = TextEditingController();
-  final TextEditingController _referralController = TextEditingController();
   final TextEditingController _discountController = TextEditingController();
 
   bool _isLoading = true;
@@ -31,7 +30,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     _welcomeController.dispose();
-    _referralController.dispose();
     _discountController.dispose();
     super.dispose();
   }
@@ -42,11 +40,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
         _welcomeController.text = (data['welcome_points'] ?? 10).toString();
-        _referralController.text = (data['referral_points'] ?? 15).toString();
         _discountController.text = (data['max_discount_percent'] ?? 30).toString();
       } else {
         _welcomeController.text = '10';
-        _referralController.text = '15';
         _discountController.text = '30';
       }
     } catch (e) {
@@ -60,7 +56,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _isSaving = true);
     
     int welcome = int.tryParse(_welcomeController.text.trim()) ?? 10;
-    int referral = int.tryParse(_referralController.text.trim()) ?? 15;
     int discount = int.tryParse(_discountController.text.trim()) ?? 30;
 
     if (discount > 100) discount = 100;
@@ -69,7 +64,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       await FirebaseFirestore.instance.collection('settings').doc('loyalty').set({
         'welcome_points': welcome,
-        'referral_points': referral,
         'max_discount_percent': discount,
         'updated_at': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
@@ -128,7 +122,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const Divider(),
 
-                // --- КНОПКА МОДЕРАЦИИ ОТЗЫВОВ ---
                 ListTile(
                   leading: const Icon(Icons.forum, color: Colors.blueGrey),
                   title: const Text('Модерация отзывов'),
@@ -173,12 +166,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           controller: _welcomeController,
                           keyboardType: TextInputType.number,
                           decoration: const InputDecoration(labelText: 'Бонус за регистрацию', prefixIcon: Icon(Icons.person_add, color: Colors.green), border: OutlineInputBorder()),
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: _referralController,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: 'Бонус за друга', prefixIcon: Icon(Icons.people, color: Colors.orange), border: OutlineInputBorder()),
                         ),
                         const SizedBox(height: 16),
                         TextField(
