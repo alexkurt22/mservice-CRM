@@ -8,12 +8,7 @@ class FCMService {
   
   /// Умная отправка пуша для ВСЕЙ системы.
   /// Читает единый ключ из ассетов (от GitHub Actions) и проверяет галочки настроек.
-  static Future<void> sendPushNotification({
-    required String token, 
-    required String title, 
-    required String body, 
-    String? reviewType
-  }) async {
+  static Future<void> sendPushNotification(String token, String title, String body, [String? reviewType]) async {
     if (token.isEmpty) return;
 
     try {
