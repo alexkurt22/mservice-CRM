@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/fcm_service.dart'; // <--- ОБЯЗАТЕЛЬНЫЙ ИМПОРТ СЕРВИСА ПУШЕЙ
 
 class BonusDistributionScreen extends StatefulWidget {
   const BonusDistributionScreen({super.key});
@@ -35,7 +36,6 @@ class _BonusDistributionScreenState extends State<BonusDistributionScreen> {
     }
   }
 
-  // Умный поиск по имени или номеру телефона
   void _filterClients(String query) {
     setState(() {
       _searchQuery = query.toLowerCase();
@@ -48,7 +48,6 @@ class _BonusDistributionScreenState extends State<BonusDistributionScreen> {
     });
   }
 
-  // Выделить всех отфильтрованных
   void _toggleSelectAll(bool? value) {
     setState(() {
       if (value == true) {
@@ -82,21 +81,12 @@ class _BonusDistributionScreenState extends State<BonusDistributionScreen> {
                 TextField(
                   controller: pointsController,
                   keyboardType: const TextInputType.numberWithOptions(signed: true),
-                  decoration: const InputDecoration(
-                    labelText: 'Количество баллов', 
-                    border: OutlineInputBorder(), 
-                    prefixIcon: Icon(Icons.stars, color: Colors.orange)
-                  ),
+                  decoration: const InputDecoration(labelText: 'Количество баллов', border: OutlineInputBorder(), prefixIcon: Icon(Icons.stars, color: Colors.orange)),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: reasonController,
-                  decoration: const InputDecoration(
-                    labelText: 'Причина (для истории)', 
-                    hintText: 'Например: Подарок на Новый Год', 
-                    border: OutlineInputBorder(), 
-                    prefixIcon: Icon(Icons.edit)
-                  ),
+                  decoration: const InputDecoration(labelText: 'Причина (для истории)', hintText: 'Например: Подарок на Новый Год', border: OutlineInputBorder(), prefixIcon: Icon(Icons.edit)),
                 ),
               ],
             ),
@@ -123,11 +113,14 @@ class _BonusDistributionScreenState extends State<BonusDistributionScreen> {
 
                         try {
                           final db = FirebaseFirestore.instance;
-                          // Используем Batch для массовой безопасной отправки
                           WriteBatch batch = db.batch();
                           int opCount = 0;
 
                           for (String phone in _selectedPhones) {
+                            final clientDoc = _allClients.firstWhere((doc) => doc.id == phone);
+                            final data = clientDoc.data() as Map<String, dynamic>;
+                            final fcmToken = data['fcm_token'] as String?;
+
                             final clientRef = db.collection('clients').doc(phone);
                             final historyRef = clientRef.collection('bonus_history').doc();
 
@@ -138,8 +131,17 @@ class _BonusDistributionScreenState extends State<BonusDistributionScreen> {
                               'created_at': FieldValue.serverTimestamp(),
                             });
 
+                            // 🔥 ВОТ ОН - ВЫЗОВ ПУШ-УВЕДОМЛЕНИЯ 🔥
+                            if (fcmToken != null && fcmToken.isNotEmpty) {
+                              await FCMService.sendPushNotification(
+                                fcmToken,
+                                points > 0 ? 'Вам начислен бонус! 🎉' : 'Списание баллов',
+                                points > 0 ? 'Мы подарили вам $points баллов. Причина: $reason' : 'С вашего счета списано ${points.abs()} баллов. Причина: $reason',
+                                'bonus', 
+                              );
+                            }
+
                             opCount += 2;
-                            // Firebase поддерживает до 500 операций в одном Batch
                             if (opCount >= 490) {
                               await batch.commit();
                               batch = db.batch();
@@ -154,7 +156,7 @@ class _BonusDistributionScreenState extends State<BonusDistributionScreen> {
                             setState(() {
                               _selectedPhones.clear();
                             });
-                            _loadClients(); // Обновляем список, чтобы увидеть новые баллы
+                            _loadClients(); 
                           }
                         } catch (e) {
                           setStateDialog(() => isProcessing = false);
