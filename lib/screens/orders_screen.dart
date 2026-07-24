@@ -18,6 +18,15 @@ class OrdersScreen extends StatefulWidget {
 }
 
 class _OrdersScreenState extends State<OrdersScreen> {
+  // Контроллер для умного поиска
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   Widget _buildOrdersList(String statusKey, bool isDark) {
     return StreamBuilder<QuerySnapshot>(
@@ -45,7 +54,36 @@ class _OrdersScreenState extends State<OrdersScreen> {
           );
         }
 
-        final docs = snapshot.data!.docs.toList();
+        var docs = snapshot.data!.docs.toList();
+
+        // --- ЛОГИКА УМНОГО ПОИСКА ЗАКАЗОВ ---
+        if (_searchQuery.isNotEmpty) {
+          final query = _searchQuery.toLowerCase();
+          docs = docs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final name = (data['client_name'] ?? '').toString().toLowerCase();
+            final phone = (data['phone'] ?? '').toString().toLowerCase();
+            final device = (data['device_type'] ?? '').toString().toLowerCase();
+            final problem = (data['problem'] ?? '').toString().toLowerCase();
+            
+            // Ищем совпадения в имени, телефоне, устройстве или проблеме
+            return name.contains(query) || phone.contains(query) || device.contains(query) || problem.contains(query);
+          }).toList();
+        }
+
+        if (docs.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.search_off_rounded, size: 64, color: isDark ? Colors.grey[700] : Colors.blueGrey[200]),
+                const SizedBox(height: 16),
+                Text('Ничего не найдено', style: TextStyle(color: isDark ? Colors.grey[400] : Colors.blueGrey[400], fontSize: 16)),
+              ],
+            ),
+          );
+        }
+
         docs.sort((a, b) {
           final aData = a.data() as Map<String, dynamic>;
           final bData = b.data() as Map<String, dynamic>;
@@ -170,7 +208,49 @@ class _OrdersScreenState extends State<OrdersScreen> {
               ),
             )
           : null,
-      body: _buildOrdersList(widget.status, isDark), 
+      body: Column(
+        children: [
+          // ПОЛОСА УМНОГО ПОИСКА
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).cardColor,
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(isDark ? 0.3 : 0.05), blurRadius: 5, offset: const Offset(0, 2))],
+            ),
+            child: TextField(
+              controller: _searchController,
+              style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+              onChanged: (val) {
+                setState(() {
+                  _searchQuery = val.trim();
+                });
+              },
+              decoration: InputDecoration(
+                hintText: 'Поиск по имени, номеру или устройству...',
+                hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey),
+                prefixIcon: Icon(Icons.search, color: isDark ? Colors.white54 : Colors.grey),
+                suffixIcon: _searchQuery.isNotEmpty 
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, color: Colors.red),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
+                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              ),
+            ),
+          ),
+          
+          // СПИСОК ЗАКАЗОВ
+          Expanded(child: _buildOrdersList(widget.status, isDark)),
+        ],
+      ), 
     );
   }
 }
+
