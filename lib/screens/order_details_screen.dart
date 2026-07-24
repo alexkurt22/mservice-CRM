@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mservice_crm/services/fcm_service.dart';
 import 'client_profile_screen.dart'; 
 
@@ -112,6 +115,157 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
+  // --- ЛОГИКА ДЕЛЕГИРОВАНИЯ И ШЕРИНГА ---
+  void _showDelegationSheet() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final String orderText = '''
+🛠 НОВЫЙ ЗАКАЗ #${widget.orderId.substring(0, 5).toUpperCase()}
+📱 Устройство: ${widget.orderData['device_type'] ?? 'Не указано'}
+⚠️ Проблема: ${widget.orderData['problem'] ?? 'Не указана'}
+👤 Клиент: ${widget.orderData['client_name'] ?? 'Без имени'}
+📞 Телефон: ${widget.orderData['phone'] ?? 'Не указан'}
+💳 Оплата: ${widget.orderData['payment_method'] ?? 'Наличные'}
+    '''.trim();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 8, bottom: 16),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2)),
+            ),
+            Text('Передать заказ', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const CircleAvatar(backgroundColor: Colors.green, child: Icon(Icons.share, color: Colors.white)),
+              title: Text('Отправить во внешний мессенджер', style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold)),
+              subtitle: Text('WhatsApp, Telegram, SMS и др.', style: TextStyle(color: isDark ? Colors.white54 : Colors.blueGrey)),
+              onTap: () {
+                Navigator.pop(ctx);
+                Share.share(orderText);
+              },
+            ),
+            ListTile(
+              leading: CircleAvatar(backgroundColor: Colors.blue[600], child: const Icon(Icons.copy, color: Colors.white)),
+              title: Text('Скопировать текст заказа', style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold)),
+              onTap: () {
+                Navigator.pop(ctx);
+                Clipboard.setData(ClipboardData(text: orderText));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Текст заказа скопирован!'), backgroundColor: Colors.blue));
+              },
+            ),
+            Divider(color: isDark ? Colors.grey[800] : Colors.grey[300]),
+            ListTile(
+              leading: CircleAvatar(backgroundColor: Colors.orange[600], child: const Icon(Icons.engineering, color: Colors.white)),
+              title: Text('Назначить мастера (CRM чат)', style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold)),
+              subtitle: Text('Передать заказ сотруднику внутри системы', style: TextStyle(color: isDark ? Colors.white54 : Colors.blueGrey)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showAssignMasterDialog(orderText);
+              },
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAssignMasterDialog(String orderText) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        title: Text('Выберите мастера', style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance.collection('employees').snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return Text('Нет сотрудников в базе', style: TextStyle(color: isDark ? Colors.white70 : Colors.grey));
+              
+              final docs = snapshot.data!.docs;
+              return ListView.builder(
+                shrinkWrap: true,
+                itemCount: docs.length,
+                itemBuilder: (context, i) {
+                  final emp = docs[i].data() as Map<String, dynamic>;
+                  final empPhone = docs[i].id; 
+                  final empName = emp['name'] ?? 'Мастер';
+                  final empRole = emp['role'] ?? 'Сотрудник';
+                  
+                  return ListTile(
+                    leading: CircleAvatar(backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200], child: Icon(Icons.person, color: isDark ? Colors.white : Colors.blueGrey)),
+                    title: Text(empName, style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold)),
+                    subtitle: Text(empRole, style: TextStyle(color: isDark ? Colors.white54 : Colors.grey)),
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      await _assignOrderToMaster(empPhone, empName, orderText);
+                    },
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена', style: TextStyle(color: Colors.grey)))
+        ]
+      )
+    );
+  }
+
+  Future<void> _assignOrderToMaster(String empPhone, String empName, String orderText) async {
+    setState(() => _isLoading = true);
+    try {
+      await FirebaseFirestore.instance.collection('orders').doc(widget.orderId).update({
+        'assigned_to': empPhone,
+        'assigned_name': empName,
+      });
+
+      final prefs = await SharedPreferences.getInstance();
+      final myPhone = prefs.getString('employee_phone') ?? 'admin';
+      List<String> parts = [myPhone, empPhone];
+      parts.sort();
+      String roomId = 'private_${parts[0]}_${parts[1]}';
+
+      final chatRef = FirebaseFirestore.instance.collection('chat_rooms').doc(roomId);
+      await chatRef.set({
+        'type': 'private',
+        'participants': parts,
+        'updated_at': FieldValue.serverTimestamp(),
+        'last_message': 'Отправлен новый заказ',
+        'last_sender': myPhone,
+      }, SetOptions(merge: true));
+
+      await chatRef.collection('messages').add({
+        'text': 'Поступил новый заказ на ремонт:\n\n$orderText',
+        'sender_id': myPhone,
+        'created_at': FieldValue.serverTimestamp(),
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Заказ успешно назначен мастеру $empName!'), backgroundColor: Colors.green));
+        setState(() {
+          widget.orderData['assigned_name'] = empName;
+        });
+      }
+    } catch(e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _showForceStartDialog() async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final priceController = TextEditingController(text: widget.orderData['price']?.toString() ?? '');
@@ -202,14 +356,12 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
-  // --- УМНОЕ ОКНО ЗАВЕРШЕНИЯ РЕМОНТА (УПРОЩЕННОЕ) ---
+  // --- УМНОЕ ОКНО ЗАВЕРШЕНИЯ РЕМОНТА ---
   Future<void> _showCompletionDialog() async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
     final initialPrice = widget.orderData['price']?.toString() ?? '';
     final priceController = TextEditingController(text: initialPrice);
     final paidController = TextEditingController(text: initialPrice); 
-    
     int refillsCount = 0;
 
     await showDialog(
@@ -306,7 +458,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     );
   }
 
-  // --- ЛОГИКА СОХРАНЕНИЯ ЗАВЕРШЕНИЯ ---
   Future<void> _processOrderCompletion(String priceStr, String paidStr, int refills) async {
     setState(() => _isLoading = true);
     try {
@@ -614,7 +765,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                               ],
                             ),
                             const SizedBox(height: 12),
-                            // --- ОТОБРАЖЕНИЕ СПОСОБА ОПЛАТЫ КЛИЕНТА ---
                             Row(
                               children: [
                                 Icon(_getPaymentIcon(paymentMethod), size: 18, color: Colors.orange),
@@ -639,10 +789,38 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                                 ],
                               ),
                             ),
+                            // --- ОТОБРАЖЕНИЕ НАЗНАЧЕННОГО МАСТЕРА ---
+                            if (widget.orderData['assigned_name'] != null) ...[
+                              const SizedBox(height: 12),
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(color: isDark ? Colors.blueGrey[800] : Colors.blueGrey[50], borderRadius: BorderRadius.circular(8)),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.engineering, color: isDark ? Colors.blueGrey[300] : Colors.blueGrey),
+                                    const SizedBox(width: 8),
+                                    Text('Назначен мастер: ${widget.orderData['assigned_name']}', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                                  ]
+                                )
+                              )
+                            ]
                           ],
                         ),
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // --- КНОПКА ПОДЕЛИТЬСЯ / ДЕЛЕГИРОВАТЬ ---
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: BorderSide(color: isDark ? Colors.blueGrey[600]! : Colors.blueGrey[300]!),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: _showDelegationSheet,
+                    icon: Icon(Icons.share, color: isDark ? Colors.blueGrey[300] : Colors.blueGrey[700]),
+                    label: Text('ПОДЕЛИТЬСЯ / НАЗНАЧИТЬ МАСТЕРА', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.blueGrey[300] : Colors.blueGrey[800])),
                   ),
                   const SizedBox(height: 24),
 
@@ -830,7 +1008,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     _buildAuditTrail(widget.orderData, isDark),
                     const SizedBox(height: 32),
                     
-                    // --- КНОПКА ЗАВЕРШЕНИЯ ТЕПЕРЬ ВЫЗЫВАЕТ УМНЫЙ ДИАЛОГ ---
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green[600],
