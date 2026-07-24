@@ -72,7 +72,7 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
 
   // Поиск клиентов по базе на лету при вводе телефона
   Future<void> _onPhoneChanged(String value) async {
-    if (_isClientSelectedFromDb) return; // Если клиент уже выбран из базы, не ищем заново
+    if (_isClientSelectedFromDb) return; 
 
     final cleanVal = value.trim();
     if (cleanVal.length < 3) {
@@ -83,7 +83,6 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
     setState(() => _isSearchingClient = true);
 
     try {
-      // Ищем совпадения по номеру телефона в коллекции clients
       final querySnapshot = await FirebaseFirestore.instance
           .collection('clients')
           .orderBy('phone')
@@ -105,7 +104,6 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
   void _selectClient(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     final fullPhone = data['phone'] ?? '';
-    // Отрезаем префикс +993 для вывода в инпут (так как там стоит префикс)
     final shortPhone = fullPhone.startsWith('+993') ? fullPhone.substring(4) : fullPhone;
 
     setState(() {
@@ -148,7 +146,7 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
           .get();
       
       if (clientQuery.docs.isEmpty) {
-         await FirebaseFirestore.instance.collection('clients').add({
+         await FirebaseFirestore.instance.collection('clients').doc(finalPhone).set({
             'name': clientName,
             'phone': finalPhone,
             'is_approved': true, 
@@ -177,10 +175,12 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.blueGrey[900],
+        backgroundColor: isDark ? Colors.grey[900] : Colors.blueGrey[900],
         foregroundColor: Colors.white,
         title: const Text('Новый оффлайн-заказ', style: TextStyle(fontSize: 18)),
       ),
@@ -198,22 +198,24 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text(
+                    Text(
                       'ДАННЫЕ КЛИЕНТА',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blueGrey, letterSpacing: 1.2),
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: isDark ? Colors.white70 : Colors.blueGrey, letterSpacing: 1.2),
                     ),
                     const SizedBox(height: 12),
 
-                    // --- 1. СНАЧАЛА НОМЕР ТЕЛЕФОНА С УМНЫМ ПОИСКОМ ---
+                    // --- 1. НОМЕР ТЕЛЕФОНА С УМНЫМ ПОИСКОМ ---
                     TextFormField(
                       controller: _phoneController,
                       keyboardType: TextInputType.number,
                       maxLength: 8,
+                      style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                       decoration: InputDecoration(
                         labelText: 'Номер телефона',
+                        labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
                         prefixText: '+993 ', 
-                        prefixStyle: const TextStyle(fontSize: 16, color: Colors.black87, fontWeight: FontWeight.bold),
-                        prefixIcon: const Icon(Icons.phone),
+                        prefixStyle: TextStyle(fontSize: 16, color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold),
+                        prefixIcon: Icon(Icons.phone, color: isDark ? Colors.white54 : Colors.blueGrey),
                         suffixIcon: _isClientSelectedFromDb 
                             ? IconButton(
                                 icon: const Icon(Icons.clear, color: Colors.red),
@@ -229,7 +231,7 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
                             : (_isSearchingClient ? const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(strokeWidth: 2)) : null),
                         border: const OutlineInputBorder(),
                         filled: true,
-                        fillColor: Colors.white,
+                        fillColor: isDark ? Colors.grey[800] : Colors.white,
                         counterText: "", 
                       ),
                       onChanged: _onPhoneChanged,
@@ -238,24 +240,24 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
                         if (val.length != 8) return 'Введите ровно 8 цифр (без +993)';
                         if (int.tryParse(val) == null) return 'Допускаются только цифры';
                         
-                        final validCodes = ['61', '62', '63', '64', '65', '71'];
+                        final validCodes = ['60', '61', '62', '63', '64', '65', '71', '72'];
                         final code = val.substring(0, 2);
                         if (!validCodes.contains(code)) {
-                          return 'Неверный код оператора (доступны: 61-65, 71)';
+                          return 'Неверный код оператора (доступны: 60-65, 71, 72)';
                         }
                         return null;
                       },
                     ),
 
-                    // ВЫПАДАЮЩИЙ СПИСОК ПОДСКАЗОК КЛИЕНТОВ ИЗ БАЗЫ
+                    // ВЫПАДАЮЩИЙ СПИСОК ПОДСКАЗОК КЛИЕНТОВ
                     if (_suggestedClients.isNotEmpty)
                       Container(
                         margin: const EdgeInsets.only(top: 4),
                         decoration: BoxDecoration(
-                          color: Colors.white,
-                          border: Border.all(color: Colors.blueGrey.shade200),
+                          color: Theme.of(context).cardColor,
+                          border: Border.all(color: isDark ? Colors.grey[700]! : Colors.blueGrey.shade200),
                           borderRadius: BorderRadius.circular(8),
-                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))],
+                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(isDark ? 0.3 : 0.05), blurRadius: 4, offset: const Offset(0, 2))],
                         ),
                         child: ListView.builder(
                           shrinkWrap: true,
@@ -269,8 +271,8 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
 
                             return ListTile(
                               leading: const Icon(Icons.person_pin, color: Colors.blue),
-                              title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                              subtitle: Text(phone),
+                              title: Text(name, style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                              subtitle: Text(phone, style: TextStyle(color: isDark ? Colors.white70 : Colors.black54)),
                               trailing: const Text('Выбрать', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
                               onTap: () => _selectClient(doc),
                             );
@@ -280,37 +282,44 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
 
                     const SizedBox(height: 16),
 
-                    // --- 2. ЗАТЕМ ИМЯ КЛИЕНТА ---
+                    // --- 2. ИМЯ КЛИЕНТА ---
                     TextFormField(
                       controller: _nameController,
-                      readOnly: _isClientSelectedFromDb, // Блокируем, если выбрали из базы
+                      readOnly: _isClientSelectedFromDb, 
+                      style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                       decoration: InputDecoration(
                         labelText: _isClientSelectedFromDb ? 'Имя клиента (Из базы)' : 'Имя клиента',
-                        prefixIcon: const Icon(Icons.person),
+                        labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
+                        prefixIcon: Icon(Icons.person, color: isDark ? Colors.white54 : Colors.blueGrey),
                         border: const OutlineInputBorder(),
                         filled: true,
-                        fillColor: _isClientSelectedFromDb ? Colors.grey[200] : Colors.white,
+                        fillColor: _isClientSelectedFromDb 
+                            ? (isDark ? Colors.grey[900] : Colors.grey[200]) 
+                            : (isDark ? Colors.grey[800] : Colors.white),
                       ),
                       validator: (val) => val == null || val.isEmpty ? 'Введите имя' : null,
                     ),
                     const SizedBox(height: 32),
 
-                    const Text(
+                    Text(
                       'ДЕТАЛИ ЗАКАЗА',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blueGrey, letterSpacing: 1.2),
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: isDark ? Colors.white70 : Colors.blueGrey, letterSpacing: 1.2),
                     ),
                     const SizedBox(height: 12),
                     
                     DropdownButtonFormField<String>(
                       value: _selectedDirection,
-                      decoration: const InputDecoration(
+                      dropdownColor: Theme.of(context).cardColor,
+                      style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                      decoration: InputDecoration(
                         labelText: 'Глобальное направление',
-                        prefixIcon: Icon(Icons.business_center),
-                        border: OutlineInputBorder(),
+                        labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
+                        prefixIcon: Icon(Icons.business_center, color: isDark ? Colors.white54 : Colors.blueGrey),
+                        border: const OutlineInputBorder(),
                         filled: true,
-                        fillColor: Colors.white,
+                        fillColor: isDark ? Colors.grey[800] : Colors.white,
                       ),
-                      hint: const Text('Напр.: Компьютерный сервис'),
+                      hint: Text('Напр.: Компьютерный сервис', style: TextStyle(color: isDark ? Colors.white24 : Colors.grey)),
                       items: _categoriesMap.keys
                           .map<DropdownMenuItem<String>>((String d) => DropdownMenuItem<String>(value: d, child: Text(d)))
                           .toList(),
@@ -326,14 +335,19 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
                     
                     DropdownButtonFormField<String>(
                       value: _selectedSubCategory,
+                      dropdownColor: Theme.of(context).cardColor,
+                      style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                       decoration: InputDecoration(
                         labelText: 'Услуга / Устройство',
-                        prefixIcon: const Icon(Icons.devices),
+                        labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
+                        prefixIcon: Icon(Icons.devices, color: isDark ? Colors.white54 : Colors.blueGrey),
                         border: const OutlineInputBorder(),
                         filled: true,
-                        fillColor: _selectedDirection == null ? Colors.grey[200] : Colors.white, 
+                        fillColor: _selectedDirection == null 
+                            ? (isDark ? Colors.grey[900] : Colors.grey[200]) 
+                            : (isDark ? Colors.grey[800] : Colors.white), 
                       ),
-                      hint: const Text('Сначала выберите направление'),
+                      hint: Text('Сначала выберите направление', style: TextStyle(color: isDark ? Colors.white24 : Colors.grey)),
                       items: (_selectedDirection != null ? _categoriesMap[_selectedDirection]! : <String>[])
                           .map<DropdownMenuItem<String>>((String d) => DropdownMenuItem<String>(value: d, child: Text(d)))
                           .toList(),
@@ -345,34 +359,39 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
                     TextFormField(
                       controller: _issueController,
                       maxLines: 3,
-                      decoration: const InputDecoration(
+                      style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                      decoration: InputDecoration(
                         labelText: 'Дополнительное описание',
+                        labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
                         alignLabelWithHint: true,
                         prefixIcon: Padding(
-                          padding: EdgeInsets.only(bottom: 32.0),
-                          child: Icon(Icons.build),
+                          padding: const EdgeInsets.only(bottom: 32.0),
+                          child: Icon(Icons.build, color: isDark ? Colors.white54 : Colors.blueGrey),
                         ),
-                        border: OutlineInputBorder(),
+                        border: const OutlineInputBorder(),
                         filled: true,
-                        fillColor: Colors.white,
+                        fillColor: isDark ? Colors.grey[800] : Colors.white,
                       ),
                       validator: (val) => val == null || val.isEmpty ? 'Введите описание поломки/услуги' : null,
                     ),
 
                     const SizedBox(height: 32),
-                    const Text(
+                    Text(
                       'МАРКЕТИНГ',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blueGrey, letterSpacing: 1.2),
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: isDark ? Colors.white70 : Colors.blueGrey, letterSpacing: 1.2),
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       value: _selectedSource,
-                      decoration: const InputDecoration(
+                      dropdownColor: Theme.of(context).cardColor,
+                      style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                      decoration: InputDecoration(
                         labelText: 'Откуда узнали о нас?',
-                        prefixIcon: Icon(Icons.campaign),
-                        border: OutlineInputBorder(),
+                        labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
+                        prefixIcon: Icon(Icons.campaign, color: isDark ? Colors.white54 : Colors.blueGrey),
+                        border: const OutlineInputBorder(),
                         filled: true,
-                        fillColor: Colors.white,
+                        fillColor: isDark ? Colors.grey[800] : Colors.white,
                       ),
                       items: _sources
                           .map<DropdownMenuItem<String>>((String s) => DropdownMenuItem<String>(value: s, child: Text(s)))
@@ -384,12 +403,14 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _otherSourceController,
-                        decoration: const InputDecoration(
+                        style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                        decoration: InputDecoration(
                           labelText: 'Укажите источник вручную',
-                          prefixIcon: Icon(Icons.edit),
-                          border: OutlineInputBorder(),
+                          labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
+                          prefixIcon: Icon(Icons.edit, color: isDark ? Colors.white54 : Colors.blueGrey),
+                          border: const OutlineInputBorder(),
                           filled: true,
-                          fillColor: Colors.white,
+                          fillColor: isDark ? Colors.grey[800] : Colors.white,
                         ),
                         validator: (val) => val == null || val.isEmpty ? 'Пожалуйста, укажите источник' : null,
                       ),
@@ -398,7 +419,7 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
                     const SizedBox(height: 40),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueGrey[900],
+                        backgroundColor: isDark ? Colors.blueGrey[700] : Colors.blueGrey[900],
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -413,4 +434,3 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
     );
   }
 }
-
