@@ -11,6 +11,7 @@ import 'orders_screen.dart';
 import 'database_cleanup_screen.dart'; 
 import 'settings_screen.dart';
 import 'chat_lists_screen.dart'; 
+import 'statistics_screen.dart'; // ВАЖНО: Подключили экран статистики
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -43,7 +44,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // Подписка на общую рацию (для системных уведомлений от клиентов)
     await messaging.subscribeToTopic('admins'); 
 
-    // ❗️ НОВОЕ: СОХРАНЯЕМ ЛИЧНЫЙ ТОКЕН СОТРУДНИКА ДЛЯ ПЕРЕПИСОК 1-НА-1
+    // НОВОЕ: СОХРАНЯЕМ ЛИЧНЫЙ ТОКЕН СОТРУДНИКА ДЛЯ ПЕРЕПИСОК 1-НА-1
     if (_myPhone != 'admin') {
       String? token = await messaging.getToken();
       if (token != null) {
@@ -66,18 +67,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  Widget _buildDrawer(BuildContext context) {
+  Widget _buildDrawer(BuildContext context, bool isDark) {
     return Drawer(
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).cardColor,
       child: Column(
         children: [
           UserAccountsDrawerHeader(
-            decoration: BoxDecoration(color: Colors.blueGrey[900]),
-            accountName: const Text('M-SERVICE CRM', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+            decoration: BoxDecoration(color: isDark ? Colors.grey[900] : Colors.blueGrey[900]),
+            accountName: const Text('M-SERVICE CRM', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 1.5, color: Colors.white)),
             accountEmail: const Text('Панель Владельца', style: TextStyle(color: Colors.white70, fontSize: 14)),
             currentAccountPicture: CircleAvatar(
-              backgroundColor: Colors.white,
-              child: Icon(Icons.admin_panel_settings, size: 40, color: Colors.blueGrey[900]),
+              backgroundColor: isDark ? Colors.grey[800] : Colors.white,
+              child: Icon(Icons.admin_panel_settings, size: 40, color: isDark ? Colors.white : Colors.blueGrey[900]),
             ),
           ),
           Expanded(
@@ -86,35 +87,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-                  child: Text('ИНСТРУМЕНТЫ', style: TextStyle(color: Colors.blueGrey[400], fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.2)),
+                  child: Text('ИНСТРУМЕНТЫ', style: TextStyle(color: isDark ? Colors.grey[500] : Colors.blueGrey[400], fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.2)),
                 ),
                 ListTile(
-                  leading: Icon(Icons.bar_chart, color: Colors.blueGrey[700]),
-                  title: const Text('Статистика', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  leading: Icon(Icons.bar_chart, color: isDark ? Colors.white70 : Colors.blueGrey[700]),
+                  title: Text('Статистика', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
                   onTap: () {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('В разработке: Подробная статистика')));
+                    Navigator.pop(context); // Закрываем меню
+                    // Открываем наш новый экран статистики!
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const StatisticsScreen()));
                   },
                 ),
                 ListTile(
-                  leading: Icon(Icons.send_to_mobile, color: Colors.blueGrey[700]),
-                  title: const Text('Создать рассылку', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  leading: Icon(Icons.send_to_mobile, color: isDark ? Colors.white70 : Colors.blueGrey[700]),
+                  title: Text('Создать рассылку', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
                   onTap: () {
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('В разработке: Маркетинговые Push-рассылки')));
                   },
                 ),
                 ListTile(
-                  leading: Icon(Icons.edit_note, color: Colors.blueGrey[700]),
-                  title: const Text('Заметки администратора', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  leading: Icon(Icons.edit_note, color: isDark ? Colors.white70 : Colors.blueGrey[700]),
+                  title: Text('Заметки администратора', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
                   onTap: () {
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('В разработке: Дневник администратора')));
                   },
                 ),
                 ListTile(
-                  leading: Icon(Icons.settings, color: Colors.blueGrey[700]),
-                  title: const Text('Настройки', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  leading: Icon(Icons.settings, color: isDark ? Colors.white70 : Colors.blueGrey[700]),
+                  title: Text('Настройки', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
@@ -123,13 +125,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
           ),
-          const Divider(height: 1),
+          Divider(height: 1, color: isDark ? Colors.grey[800] : Colors.grey[300]),
           SafeArea(
             top: false,
             child: ListTile(
-              tileColor: Colors.red[50],
-              leading: const Icon(Icons.delete_sweep, color: Colors.red),
-              title: const Text('Очистка базы данных', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 15)),
+              tileColor: isDark ? Colors.red[900]?.withOpacity(0.2) : Colors.red[50],
+              leading: Icon(Icons.delete_sweep, color: isDark ? Colors.red[300] : Colors.red),
+              title: Text('Очистка базы данных', style: TextStyle(color: isDark ? Colors.red[300] : Colors.red, fontWeight: FontWeight.bold, fontSize: 15)),
               onTap: () {
                 Navigator.pop(context);
                 Navigator.push(context, MaterialPageRoute(builder: (_) => const DatabaseCleanupScreen()));
@@ -148,10 +150,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required Color color,
     required Widget child,
     required VoidCallback onTap,
+    required bool isDark,
   }) {
     return Card(
       elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      color: Theme.of(context).cardColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: isDark ? Colors.grey[800]! : Colors.transparent)
+      ),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
@@ -167,7 +174,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Text(
                 title,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isDark ? Colors.grey[400] : Colors.blueGrey),
               ),
             ],
           ),
@@ -202,15 +209,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.blueGrey[900],
+        backgroundColor: isDark ? Colors.grey[900] : Colors.blueGrey[900],
         foregroundColor: Colors.white,
         title: const Text('Сводка CRM', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         elevation: 0,
       ),
-      drawer: _buildDrawer(context), 
+      drawer: _buildDrawer(context, isDark), 
       
       floatingActionButton: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('chat_rooms').snapshots(),
@@ -274,12 +283,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            
             Row(
               children: [
-                Icon(Icons.home_repair_service, color: Colors.blueGrey[800]),
+                Icon(Icons.home_repair_service, color: isDark ? Colors.blueGrey[300] : Colors.blueGrey[800]),
                 const SizedBox(width: 8),
-                Text('Заказы', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.blueGrey[900], letterSpacing: 1.2)),
+                Text('Заказы', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: isDark ? Colors.white : Colors.blueGrey[900], letterSpacing: 1.2)),
               ],
             ),
             const SizedBox(height: 12),
@@ -293,45 +301,49 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 _buildStatCard(
                   context: context,
+                  isDark: isDark,
                   title: 'Новые заказы',
                   icon: Icons.fiber_new,
                   color: Colors.blue,
                   child: _buildStreamStat(
                     stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'new').snapshots(),
-                    color: Colors.blue[800]!,
+                    color: isDark ? Colors.blue[300]! : Colors.blue[800]!,
                   ),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(status: 'new', title: 'Новые заказы'))),
                 ),
                 _buildStatCard(
                   context: context,
+                  isDark: isDark,
                   title: 'Ожидают ответа',
                   icon: Icons.hourglass_empty,
                   color: Colors.deepPurple,
                   child: _buildStreamStat(
                     stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'awaiting_approval').snapshots(),
-                    color: Colors.deepPurple[800]!,
+                    color: isDark ? Colors.deepPurple[300]! : Colors.deepPurple[800]!,
                   ),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(status: 'awaiting_approval', title: 'Ожидают ответа'))),
                 ),
                 _buildStatCard(
                   context: context,
+                  isDark: isDark,
                   title: 'Выполняются',
                   icon: Icons.build_circle,
                   color: Colors.orange,
                   child: _buildStreamStat(
                     stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'in_progress').snapshots(),
-                    color: Colors.orange[800]!,
+                    color: isDark ? Colors.orange[300]! : Colors.orange[800]!,
                   ),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(status: 'in_progress', title: 'В работе (Выполняются)'))),
                 ),
                 _buildStatCard(
                   context: context,
+                  isDark: isDark,
                   title: 'Выполненные',
                   icon: Icons.check_circle,
                   color: Colors.teal,
                   child: _buildStreamStat(
                     stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'completed').snapshots(),
-                    color: Colors.teal[800]!,
+                    color: isDark ? Colors.teal[300]! : Colors.teal[800]!,
                   ),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(status: 'completed', title: 'Выполненные заказы'))),
                 ),
@@ -342,9 +354,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
             Row(
               children: [
-                Icon(Icons.people_alt, color: Colors.blueGrey[800]),
+                Icon(Icons.people_alt, color: isDark ? Colors.blueGrey[300] : Colors.blueGrey[800]),
                 const SizedBox(width: 8),
-                Text('Клиенты', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.blueGrey[900], letterSpacing: 1.2)),
+                Text('Клиенты', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: isDark ? Colors.white : Colors.blueGrey[900], letterSpacing: 1.2)),
               ],
             ),
             const SizedBox(height: 12),
@@ -358,12 +370,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 _buildStatCard(
                   context: context,
+                  isDark: isDark,
                   title: 'Ждут одобрения',
                   icon: Icons.timer,
                   color: Colors.orange,
                   child: _buildStreamStat(
                     stream: FirebaseFirestore.instance.collection('clients').snapshots(),
-                    color: Colors.orange[800]!,
+                    color: isDark ? Colors.orange[300]! : Colors.orange[800]!,
                     filter: (doc) {
                       final data = doc.data() as Map<String, dynamic>;
                       return data['is_approved'] == false && data['rejection_reason'] == null && data['is_offline'] != true;
@@ -373,12 +386,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 _buildStatCard(
                   context: context,
+                  isDark: isDark,
                   title: 'Без приложения',
-                  icon: Icons.person_outline, // Поменял иконку, чтобы она отличалась от "Отклоненных"
+                  icon: Icons.person_outline, 
                   color: Colors.grey,
                   child: _buildStreamStat(
                     stream: FirebaseFirestore.instance.collection('clients').snapshots(),
-                    color: Colors.grey[800]!,
+                    color: isDark ? Colors.grey[400]! : Colors.grey[800]!,
                     filter: (doc) {
                       final data = doc.data() as Map<String, dynamic>;
                       return data['is_offline'] == true;
@@ -388,27 +402,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 _buildStatCard(
                   context: context,
+                  isDark: isDark,
                   title: 'С приложением',
                   icon: Icons.verified_user,
                   color: Colors.green,
                   child: _buildStreamStat(
                     stream: FirebaseFirestore.instance.collection('clients').snapshots(),
-                    color: Colors.green[800]!,
+                    color: isDark ? Colors.green[300]! : Colors.green[800]!,
                     filter: (doc) {
                       final data = doc.data() as Map<String, dynamic>;
-                      return data['is_approved'] == true && data['is_offline'] != true; // ИСПРАВЛЕНО: Скрыли оффлайн-клиентов из этого списка
+                      return data['is_approved'] == true && data['is_offline'] != true; 
                     }
                   ),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(tabType: 2, title: 'С приложением'))),
                 ),
                 _buildStatCard(
                   context: context,
+                  isDark: isDark,
                   title: 'Отклоненные',
                   icon: Icons.block,
                   color: Colors.red,
                   child: _buildStreamStat(
                     stream: FirebaseFirestore.instance.collection('clients').snapshots(),
-                    color: Colors.red[800]!,
+                    color: isDark ? Colors.red[300]! : Colors.red[800]!,
                     filter: (doc) {
                       final data = doc.data() as Map<String, dynamic>;
                       return data['is_approved'] == false && data['rejection_reason'] != null;
