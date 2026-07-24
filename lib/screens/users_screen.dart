@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart'; 
 import 'private_chat_screen.dart'; 
 import 'import_clients_screen.dart';
-import 'client_profile_screen.dart'; // <--- ПОДКЛЮЧИЛИ ЭКРАН ПРОФИЛЯ
+import 'client_profile_screen.dart'; 
 
 class UsersScreen extends StatefulWidget {
   final int tabType;
@@ -21,6 +21,15 @@ class UsersScreen extends StatefulWidget {
 }
 
 class _UsersScreenState extends State<UsersScreen> {
+  // Контроллер для умного поиска
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   // --- ЛОГИКА ЗВОНКА ---
   Future<void> _makePhoneCall(String phoneNumber) async {
@@ -52,11 +61,13 @@ class _UsersScreenState extends State<UsersScreen> {
       'is_approved': true,
       'rejection_reason': null,
     });
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Клиент одобрен'), backgroundColor: Colors.green));
   }
 
   void _rejectUser(BuildContext context, String docId) {
     String selectedReason = 'Неверный номер';
     final reasons = ['Неверный номер', 'Неверный код', 'Спам'];
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     showDialog(
       context: context,
@@ -64,14 +75,19 @@ class _UsersScreenState extends State<UsersScreen> {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: const Text('Причина отклонения', style: TextStyle(fontWeight: FontWeight.bold)),
-              content: DropdownButton<String>(
-                value: selectedReason,
-                isExpanded: true,
-                items: reasons.map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
-                onChanged: (val) {
-                  if (val != null) setState(() => selectedReason = val);
-                },
+              backgroundColor: Theme.of(context).cardColor,
+              title: Text('Причина отклонения', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+              content: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: selectedReason,
+                  dropdownColor: Theme.of(context).cardColor,
+                  isExpanded: true,
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 16),
+                  items: reasons.map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
+                  onChanged: (val) {
+                    if (val != null) setState(() => selectedReason = val);
+                  },
+                ),
               ),
               actions: [
                 TextButton(
@@ -95,6 +111,65 @@ class _UsersScreenState extends State<UsersScreen> {
         );
       }
     );
+  }
+
+  // --- ЛОГИКА ГЛУБОКОГО УДАЛЕНИЯ КЛИЕНТА (DEEP DELETE) ---
+  Future<void> _deepDeleteClient(String docId, String name) async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        title: const Text('Удаление клиента', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+        content: Text(
+          'Вы уверены, что хотите безвозвратно удалить клиента "$name"?\n\nВся его история баллов, комментариев и профиль будут удалены навсегда.',
+          style: TextStyle(color: isDark ? Colors.white70 : Colors.black87),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Отмена', style: TextStyle(color: Colors.grey))),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red[700]),
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.delete_forever, color: Colors.white, size: 18),
+            label: const Text('Удалить навсегда', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      final clientRef = FirebaseFirestore.instance.collection('clients').doc(docId);
+      final batch = FirebaseFirestore.instance.batch();
+
+      // 1. Находим и удаляем историю бонусов
+      final bonusHistory = await clientRef.collection('bonus_history').get();
+      for (var doc in bonusHistory.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // 2. Находим и удаляем служебные заметки
+      final comments = await clientRef.collection('comments').get();
+      for (var doc in comments.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // 3. Удаляем сам профиль клиента
+      batch.delete(clientRef);
+
+      // Запускаем массовое удаление
+      await batch.commit();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Клиент и вся его история успешно удалены'), backgroundColor: Colors.green));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка удаления: $e'), backgroundColor: Colors.red));
+      }
+    }
   }
 
   Future<void> _openPrivateChat(BuildContext context, String targetPhone, String targetName) async {
@@ -127,6 +202,7 @@ class _UsersScreenState extends State<UsersScreen> {
 
   // --- ЛОГИКА ДОБАВЛЕНИЯ ОФФЛАЙН КЛИЕНТА ВРУЧНУЮ ---
   void _showAddOfflineClientDialog() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final nameController = TextEditingController();
     final phoneController = TextEditingController(text: '+993');
     bool isSaving = false;
@@ -162,16 +238,21 @@ class _UsersScreenState extends State<UsersScreen> {
             }
 
             return AlertDialog(
-              title: const Text('Новый клиент (Оффлайн)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              backgroundColor: Theme.of(context).cardColor,
+              title: Text('Новый клиент (Оффлайн)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextField(
                     controller: phoneController,
+                    style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                     decoration: InputDecoration(
                       labelText: 'Номер телефона',
-                      prefixIcon: const Icon(Icons.phone),
+                      labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
+                      prefixIcon: Icon(Icons.phone, color: isDark ? Colors.white54 : Colors.blueGrey),
                       suffixIcon: isChecking ? const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(strokeWidth: 2)) : null,
+                      enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey)),
+                      focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: isDark ? Colors.blue[300]! : Colors.blue)),
                     ),
                     keyboardType: TextInputType.phone,
                     onChanged: checkPhone, 
@@ -187,9 +268,13 @@ class _UsersScreenState extends State<UsersScreen> {
                   
                   TextField(
                     controller: nameController,
-                    decoration: const InputDecoration(
+                    style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                    decoration: InputDecoration(
                       labelText: 'Имя клиента',
-                      prefixIcon: Icon(Icons.person),
+                      labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
+                      prefixIcon: Icon(Icons.person, color: isDark ? Colors.white54 : Colors.blueGrey),
+                      enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey)),
+                      focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: isDark ? Colors.blue[300]! : Colors.blue)),
                     ),
                     textCapitalization: TextCapitalization.words,
                   ),
@@ -242,7 +327,7 @@ class _UsersScreenState extends State<UsersScreen> {
     );
   }
 
-  Widget _buildUsersList() {
+  Widget _buildUsersList(bool isDark) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('clients').snapshots(),
       builder: (context, snapshot) {
@@ -250,7 +335,7 @@ class _UsersScreenState extends State<UsersScreen> {
           return const Center(child: CircularProgressIndicator());
         }
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return Center(child: Text('Пусто', style: TextStyle(color: Colors.blueGrey[400], fontSize: 16)));
+          return Center(child: Text('Пусто', style: TextStyle(color: isDark ? Colors.white54 : Colors.blueGrey[400], fontSize: 16)));
         }
 
         var docs = snapshot.data!.docs.where((doc) {
@@ -259,11 +344,27 @@ class _UsersScreenState extends State<UsersScreen> {
           final isApproved = data['is_approved'] == true;
           final isOffline = data['is_offline'] == true;
 
-          if (widget.tabType == 0) return !isApproved && reason == null && !isOffline; 
-          if (widget.tabType == 1) return isOffline; 
-          if (widget.tabType == 2) return isApproved && !isOffline; 
-          if (widget.tabType == 3) return !isApproved && reason != null; 
-          return false;
+          // 1. Фильтр по вкладкам
+          bool matchesTab = false;
+          if (widget.tabType == 0) matchesTab = !isApproved && reason == null && !isOffline; 
+          if (widget.tabType == 1) matchesTab = isOffline; 
+          if (widget.tabType == 2) matchesTab = isApproved && !isOffline; 
+          if (widget.tabType == 3) matchesTab = !isApproved && reason != null; 
+
+          if (!matchesTab) return false;
+
+          // 2. Фильтр по строке УМНОГО ПОИСКА
+          if (_searchQuery.isNotEmpty) {
+            final query = _searchQuery.toLowerCase();
+            final phone = (data['phone'] ?? '').toLowerCase();
+            final name = (data['name'] ?? '').toLowerCase();
+            
+            if (!phone.contains(query) && !name.contains(query)) {
+              return false; // Если не совпало ни имя, ни телефон - скрываем
+            }
+          }
+
+          return true;
         }).toList();
 
         docs.sort((a, b) {
@@ -278,9 +379,9 @@ class _UsersScreenState extends State<UsersScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.group_off_outlined, size: 64, color: Colors.blueGrey[200]),
+                Icon(Icons.search_off_rounded, size: 64, color: isDark ? Colors.grey[700] : Colors.blueGrey[200]),
                 const SizedBox(height: 16),
-                Text('В этой категории пока пусто', style: TextStyle(color: Colors.blueGrey[400], fontSize: 16)),
+                Text(_searchQuery.isNotEmpty ? 'Ничего не найдено' : 'В этой категории пока пусто', style: TextStyle(color: isDark ? Colors.grey[400] : Colors.blueGrey[400], fontSize: 16)),
               ],
             ),
           );
@@ -306,7 +407,7 @@ class _UsersScreenState extends State<UsersScreen> {
             if (phone.isNotEmpty) {
               trailingActions.add(
                 IconButton(
-                  icon: const Icon(Icons.phone_in_talk, color: Colors.teal),
+                  icon: Icon(Icons.phone_in_talk, color: isDark ? Colors.teal[300] : Colors.teal),
                   onPressed: () => _makePhoneCall(phone),
                   tooltip: 'Позвонить',
                 )
@@ -316,14 +417,14 @@ class _UsersScreenState extends State<UsersScreen> {
             if (isPending) {
               trailingActions.add(
                 IconButton(
-                  icon: const Icon(Icons.check_circle, color: Colors.green),
+                  icon: Icon(Icons.check_circle, color: isDark ? Colors.green[300] : Colors.green),
                   onPressed: () => _approveUser(doc.id),
                   tooltip: 'Одобрить',
                 )
               );
               trailingActions.add(
                 IconButton(
-                  icon: const Icon(Icons.cancel, color: Colors.red),
+                  icon: Icon(Icons.cancel, color: isDark ? Colors.red[300] : Colors.red),
                   onPressed: () => _rejectUser(context, doc.id),
                   tooltip: 'Отклонить',
                 )
@@ -331,18 +432,30 @@ class _UsersScreenState extends State<UsersScreen> {
             } else if (isActive && phone.isNotEmpty) {
               trailingActions.add(
                 IconButton(
-                  icon: const Icon(Icons.chat, color: Colors.blue),
+                  icon: Icon(Icons.chat, color: isDark ? Colors.blue[300] : Colors.blue),
                   onPressed: () => _openPrivateChat(context, phone, name),
                   tooltip: 'Написать сообщение',
                 )
               );
             }
 
+            // Добавляем Кнопку Глубокого Удаления во все вкладки
+            trailingActions.add(
+              IconButton(
+                icon: Icon(Icons.delete_forever, color: isDark ? Colors.red[400] : Colors.red[700]),
+                onPressed: () => _deepDeleteClient(doc.id, name),
+                tooltip: 'Удалить клиента и историю',
+              )
+            );
+
             return Card(
-              elevation: 2,
+              elevation: 1,
+              color: Theme.of(context).cardColor,
               margin: const EdgeInsets.only(bottom: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              // --- СДЕЛАЛИ КАРТОЧКУ КЛИКАБЕЛЬНОЙ ---
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: isDark ? Colors.grey[800]! : Colors.transparent)
+              ),
               child: InkWell(
                 onTap: () {
                   Navigator.push(
@@ -360,13 +473,17 @@ class _UsersScreenState extends State<UsersScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 8.0),
                   child: ListTile(
                     leading: CircleAvatar(
-                      backgroundColor: isActive ? Colors.green[100] : (isRejected ? Colors.red[100] : (isOfflineTab ? Colors.grey[200] : Colors.orange[100])),
+                      backgroundColor: isActive 
+                          ? (isDark ? Colors.green[900]?.withOpacity(0.4) : Colors.green[100]) 
+                          : (isRejected ? (isDark ? Colors.red[900]?.withOpacity(0.4) : Colors.red[100]) 
+                          : (isOfflineTab ? (isDark ? Colors.grey[800] : Colors.grey[200]) 
+                          : (isDark ? Colors.orange[900]?.withOpacity(0.4) : Colors.orange[100]))),
                       child: Icon(
                         isActive ? Icons.verified_user : (isRejected ? Icons.person_off : (isOfflineTab ? Icons.person_outline : Icons.person_add)),
-                        color: isActive ? Colors.green[700] : (isRejected ? Colors.red[700] : (isOfflineTab ? Colors.grey[700] : Colors.orange[700])),
+                        color: isActive ? Colors.green : (isRejected ? Colors.red : (isOfflineTab ? Colors.grey : Colors.orange)),
                       ),
                     ),
-                    title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    title: Text(name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : Colors.black87)),
                     subtitle: Padding(
                       padding: const EdgeInsets.only(top: 8.0),
                       child: Column(
@@ -374,46 +491,43 @@ class _UsersScreenState extends State<UsersScreen> {
                         children: [
                           Row(
                             children: [
-                              const Icon(Icons.phone, size: 16, color: Colors.blueGrey),
+                              Icon(Icons.phone, size: 16, color: isDark ? Colors.grey[400] : Colors.blueGrey),
                               const SizedBox(width: 6),
-                              Text(phone, style: const TextStyle(color: Colors.black87, fontSize: 14)),
+                              Text(phone, style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 14)),
                             ],
                           ),
                           const SizedBox(height: 6),
                           if (isPending)
                             Row(
                               children: [
-                                const Icon(Icons.sms, size: 16, color: Colors.deepOrange),
+                                Icon(Icons.sms, size: 16, color: isDark ? Colors.orange[300] : Colors.deepOrange),
                                 const SizedBox(width: 6),
-                                Text('Код из SMS: ${data['sms_code'] ?? '-'}', style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold)),
+                                Text('Код из SMS: ${data['sms_code'] ?? '-'}', style: TextStyle(color: isDark ? Colors.orange[300] : Colors.deepOrange, fontWeight: FontWeight.bold)),
                               ],
                             ),
                           if (isRejected)
                             Row(
                               children: [
-                                const Icon(Icons.error_outline, size: 16, color: Colors.red),
+                                Icon(Icons.error_outline, size: 16, color: isDark ? Colors.red[300] : Colors.red),
                                 const SizedBox(width: 6),
-                                Expanded(child: Text('Причина: ${data['rejection_reason'] ?? '-'}', style: const TextStyle(color: Colors.red))),
+                                Expanded(child: Text('Причина: ${data['rejection_reason'] ?? '-'}', style: TextStyle(color: isDark ? Colors.red[300] : Colors.red))),
                               ],
                             ),
                           if (isOfflineTab)
                             Row(
                               children: [
-                                const Icon(Icons.app_blocking, size: 16, color: Colors.grey),
+                                Icon(Icons.app_blocking, size: 16, color: isDark ? Colors.grey[500] : Colors.grey),
                                 const SizedBox(width: 6),
-                                const Text('Добавлен вручную', style: TextStyle(color: Colors.grey)),
+                                Text('Добавлен вручную', style: TextStyle(color: isDark ? Colors.grey[500] : Colors.grey)),
                               ],
                             ),
                         ],
                       ),
                     ),
-                    // Добавляем к кнопкам стрелочку для индикации перехода
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min, 
                       children: [
                         ...trailingActions,
-                        const SizedBox(width: 4),
-                        const Icon(Icons.chevron_right, color: Colors.grey),
                       ]
                     ),
                   ),
@@ -428,10 +542,12 @@ class _UsersScreenState extends State<UsersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.blueGrey[900],
+        backgroundColor: isDark ? Colors.grey[900] : Colors.blueGrey[900],
         foregroundColor: Colors.white,
         title: Text(widget.title), 
         actions: [
@@ -448,12 +564,54 @@ class _UsersScreenState extends State<UsersScreen> {
       floatingActionButton: widget.tabType == 1 
           ? FloatingActionButton.extended(
               onPressed: _showAddOfflineClientDialog,
-              backgroundColor: Colors.blueGrey[800],
+              backgroundColor: isDark ? Colors.blueGrey[700] : Colors.blueGrey[800],
               icon: const Icon(Icons.person_add, color: Colors.white),
               label: const Text('Добавить', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             )
           : null,
-      body: _buildUsersList(), 
+      body: Column(
+        children: [
+          // ПОЛОСА УМНОГО ПОИСКА
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).cardColor,
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(isDark ? 0.3 : 0.05), blurRadius: 5, offset: const Offset(0, 2))],
+            ),
+            child: TextField(
+              controller: _searchController,
+              style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+              onChanged: (val) {
+                setState(() {
+                  _searchQuery = val.trim();
+                });
+              },
+              decoration: InputDecoration(
+                hintText: 'Поиск по имени или телефону...',
+                hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey),
+                prefixIcon: Icon(Icons.search, color: isDark ? Colors.white54 : Colors.grey),
+                suffixIcon: _searchQuery.isNotEmpty 
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, color: Colors.red),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
+                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              ),
+            ),
+          ),
+          
+          // СПИСОК КЛИЕНТОВ
+          Expanded(child: _buildUsersList(isDark)),
+        ],
+      ), 
     );
   }
 }
+
