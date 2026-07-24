@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:intl/intl.dart'; // <--- ВОТ ЭТОТ ИМПОРТ РЕШАЕТ ПРОБЛЕМУ
 import 'private_chat_screen.dart';
 import 'order_details_screen.dart'; 
 
@@ -52,7 +53,7 @@ class _ClientProfileScreenState extends State<ClientProfileScreen> {
     }
   }
 
-  // --- ЛОГИКА УПРАВЛЕНИЯ PUNCH-КАРТОЙ (ЗАПРАВКИ КАРТРИДЖЕЙ) ---
+  // --- ЛОГИКА УПРАВЛЕНИЯ PUNCH-КАРТОЙ (ЗАПРАВКИ) ---
   Future<void> _updateCartridgeRefills(int delta) async {
     try {
       final clientRef = FirebaseFirestore.instance.collection('clients').doc(widget.clientId);
