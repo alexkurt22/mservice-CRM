@@ -112,70 +112,108 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
+  // --- ДИАЛОГ ПРИНЯТИЯ В РАБОТУ С УЧЕТОМ ДОЛГОВ ---
   Future<void> _showForceStartDialog() async {
-    final priceController = TextEditingController();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final priceController = TextEditingController(text: widget.orderData['price']?.toString() ?? '');
+    final paidController = TextEditingController();
     final commentController = TextEditingController();
     
     await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Принять в работу (Устно)', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Укажите согласованную цену и диагноз. Заказ сразу перейдет в статус "В работе".', style: TextStyle(fontSize: 13, color: Colors.blueGrey)),
-            const SizedBox(height: 16),
-            TextField(
-              controller: priceController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Итоговая цена (TMT)',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.payments, color: Colors.green),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setStateDialog) {
+          return AlertDialog(
+            backgroundColor: Theme.of(context).cardColor,
+            title: Text('Принять в работу / Закрыть', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Укажите финансовые данные по заказу.', style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : Colors.blueGrey)),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: priceController,
+                    keyboardType: TextInputType.number,
+                    style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                    decoration: InputDecoration(
+                      labelText: 'Итоговая цена (TMT)',
+                      labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.payments, color: Colors.green),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: paidController,
+                    keyboardType: TextInputType.number,
+                    style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                    decoration: InputDecoration(
+                      labelText: 'Оплачено клиентом (TMT)',
+                      labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.account_balance_wallet, color: Colors.blue),
+                      helperText: 'Если клиент платит не всю сумму, остаток уйдет в долг',
+                      helperStyle: TextStyle(color: isDark ? Colors.white38 : Colors.grey),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: commentController,
+                    style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                    decoration: InputDecoration(
+                      labelText: 'Диагноз / Комментарий',
+                      labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.build),
+                    ),
+                    maxLines: 2,
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: commentController,
-              decoration: const InputDecoration(
-                labelText: 'Диагноз / Комментарий',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.build),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Отмена', style: TextStyle(color: Colors.grey)),
               ),
-              maxLines: 2,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Отмена', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[600], foregroundColor: Colors.white),
-            onPressed: () async {
-              final price = priceController.text.trim();
-              final comment = commentController.text.trim();
-              if (price.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Укажите цену!'), backgroundColor: Colors.red));
-                return;
-              }
-              Navigator.pop(ctx);
-              await _forceStartOrder(price, comment);
-            },
-            child: const Text('Принять в работу'),
-          ),
-        ],
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[600], foregroundColor: Colors.white),
+                onPressed: () async {
+                  final priceStr = priceController.text.trim();
+                  final paidStr = paidController.text.trim();
+                  final comment = commentController.text.trim();
+
+                  if (priceStr.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Укажите цену!'), backgroundColor: Colors.red));
+                    return;
+                  }
+
+                  Navigator.pop(ctx);
+                  await _forceStartOrder(priceStr, paidStr, comment);
+                },
+                child: const Text('Сохранить и в работу'),
+              ),
+            ],
+          );
+        }
       ),
     );
   }
 
-  Future<void> _forceStartOrder(String price, String comment) async {
+  Future<void> _forceStartOrder(String priceStr, String paidStr, String comment) async {
     setState(() => _isLoading = true);
     try {
+      double price = double.tryParse(priceStr) ?? 0;
+      double paid = double.tryParse(paidStr) ?? price; // Если не указал сколько оплатил, считаем что оплатил всё
+      double debt = price - paid;
+      if (debt < 0) debt = 0;
+
       await FirebaseFirestore.instance.collection('orders').doc(widget.orderId).update({
         'status': 'in_progress',
-        'price': price,
+        'price': priceStr,
+        'paid_amount': paid.toString(),
+        'debt_amount': debt.toString(),
         'admin_comment': comment.isNotEmpty ? comment : 'Согласовано устно',
         'has_unread_update': true,
         'options': FieldValue.delete(),
@@ -183,7 +221,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Заказ переведен в работу!'), backgroundColor: Colors.green),
+          const SnackBar(content: Text('Заказ переведен в работу с учетом финансов!'), backgroundColor: Colors.green),
         );
         Navigator.pop(context); 
       }
@@ -252,7 +290,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           if (clientDoc.exists && clientDoc.data() != null) {
             String? fcmToken = clientDoc.data()!['fcm_token'];
             if (fcmToken != null) {
-              // ЗДЕСЬ ИСПРАВЛЕНА ОШИБКА АРГУМЕНТОВ
               await FCMService.sendPushNotification(
                 fcmToken,
                 isBargainingMode ? 'Новое предложение от мастера!' : 'Заказ ожидает согласования',
@@ -277,14 +314,14 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
-  Widget _buildHistoryBlock(Map<String, dynamic> data) {
+  Widget _buildHistoryBlock(Map<String, dynamic> data, bool isDark) {
     final history = data['history'] as List<dynamic>?;
     if (history == null || history.isEmpty) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('История прошлых предложений:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.blueGrey)),
+        Text('История прошлых предложений:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: isDark ? Colors.white70 : Colors.blueGrey)),
         const SizedBox(height: 8),
         ...history.asMap().entries.map((entry) {
           int round = entry.key + 1;
@@ -293,9 +330,9 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.grey.shade100,
+              color: isDark ? Colors.grey[800] : Colors.grey.shade100,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey.shade300),
+              border: Border.all(color: isDark ? Colors.grey[700]! : Colors.grey.shade300),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -306,7 +343,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                   padding: const EdgeInsets.only(bottom: 4),
                   child: Text(
                     '${opt['description']} — ${opt['price']} TMT',
-                    style: const TextStyle(color: Colors.grey, decoration: TextDecoration.lineThrough, fontSize: 13),
+                    style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey, decoration: TextDecoration.lineThrough, fontSize: 13),
                   ),
                 )).toList(),
               ],
@@ -318,7 +355,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     );
   }
 
-  Widget _buildAuditTrail(Map<String, dynamic> data) {
+  Widget _buildAuditTrail(Map<String, dynamic> data, bool isDark) {
     final options = data.containsKey('options') ? data['options'] as List<dynamic> : null;
     final selectedIndex = data.containsKey('selected_option_index') ? data['selected_option_index'] as int? : null;
 
@@ -327,7 +364,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 16),
-          const Text('История согласования вариантов:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+          Text('История согласования вариантов:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white70 : Colors.blueGrey)),
           const SizedBox(height: 12),
           ...options.asMap().entries.map((entry) {
             int idx = entry.key;
@@ -335,10 +372,12 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
             bool isSelected = idx == selectedIndex;
 
             return Card(
-              color: isSelected ? Colors.green.shade50 : Colors.white,
+              color: isSelected 
+                  ? (isDark ? Colors.green[900]?.withOpacity(0.3) : Colors.green.shade50) 
+                  : Theme.of(context).cardColor,
               elevation: 0,
               shape: RoundedRectangleBorder(
-                side: BorderSide(color: isSelected ? Colors.green : Colors.grey.shade300, width: isSelected ? 2 : 1),
+                side: BorderSide(color: isSelected ? Colors.green : (isDark ? Colors.grey[800]! : Colors.grey.shade300), width: isSelected ? 2 : 1),
                 borderRadius: BorderRadius.circular(8),
               ),
               margin: const EdgeInsets.only(bottom: 8),
@@ -352,14 +391,14 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                   opt['description'] ?? '',
                   style: TextStyle(
                     fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                    color: isSelected ? Colors.black87 : Colors.grey[500],
+                    color: isSelected ? (isDark ? Colors.white : Colors.black87) : Colors.grey[500],
                     decoration: isSelected ? TextDecoration.none : TextDecoration.lineThrough,
                   ),
                 ),
                 subtitle: Text(
                   '${opt['price']} TMT',
                   style: TextStyle(
-                    color: isSelected ? Colors.green[700] : Colors.grey[500],
+                    color: isSelected ? Colors.green[500] : Colors.grey[500],
                     fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                     fontSize: 16,
                   ),
@@ -375,22 +414,36 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 16),
-          Text('Диагноз/Комментарий: ${data['admin_comment'] ?? 'Нет'}', style: const TextStyle(fontSize: 16)),
+          Text('Диагноз/Комментарий: ${data['admin_comment'] ?? 'Нет'}', style: TextStyle(fontSize: 16, color: isDark ? Colors.white : Colors.black87)),
           const SizedBox(height: 8),
           Text('Стоимость: ${data['price'] ?? 'Не указана'} TMT', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green)),
+          if (data.containsKey('debt_amount') && double.tryParse(data['debt_amount'].toString())! > 0) ...[
+            const SizedBox(height: 4),
+            Text('Имеется долг: ${data['debt_amount']} TMT', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red)),
+          ],
         ],
       );
     }
   }
 
+  // --- ВСПОМОГАТЕЛЬНЫЙ ВИДЖЕТ ИКОНКИ ОПЛАТЫ ---
+  IconData _getPaymentIcon(String method) {
+    if (method.contains('карта')) return Icons.credit_card;
+    if (method.contains('Перечисление')) return Icons.account_balance;
+    if (method.contains('бонус')) return Icons.stars_rounded;
+    return Icons.payments; 
+  }
+
   @override
   Widget build(BuildContext context) {
     String status = widget.orderData['status'] ?? 'unknown';
+    String paymentMethod = widget.orderData['payment_method'] ?? 'Наличные';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.blueGrey[900],
+        backgroundColor: isDark ? Colors.grey[900] : Colors.blueGrey[900],
         foregroundColor: Colors.white,
         title: const Text('Детали заказа', style: TextStyle(fontSize: 18)),
       ),
@@ -411,8 +464,11 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     borderRadius: BorderRadius.circular(12),
                     child: Card(
                       elevation: widget.fromProfile ? 0 : 2, 
-                      color: widget.fromProfile ? Colors.grey[100] : Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey[300]!)),
+                      color: Theme.of(context).cardColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12), 
+                        side: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[300]!)
+                      ),
                       child: Padding(
                         padding: const EdgeInsets.all(20.0),
                         child: Column(
@@ -423,21 +479,21 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                               children: [
                                 Row(
                                   children: [
-                                    Icon(Icons.person, color: Colors.blueGrey[400]),
+                                    Icon(Icons.person, color: isDark ? Colors.grey[400] : Colors.blueGrey[400]),
                                     const SizedBox(width: 8),
-                                    Text('${widget.orderData['client_name'] ?? 'Без имени'}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                                    Text('${widget.orderData['client_name'] ?? 'Без имени'}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: isDark ? Colors.white : Colors.black87)),
                                   ],
                                 ),
                                 if (!widget.fromProfile)
                                   const Icon(Icons.chevron_right, color: Colors.grey), 
                               ],
                             ),
-                            const Divider(height: 24),
+                            Divider(height: 24, color: isDark ? Colors.grey[800] : Colors.grey[200]),
                             Row(
                               children: [
                                 const Icon(Icons.phone, size: 18, color: Colors.grey),
                                 const SizedBox(width: 8),
-                                Text('${widget.orderData['phone'] ?? 'Не указан'}', style: const TextStyle(fontSize: 16)),
+                                Text('${widget.orderData['phone'] ?? 'Не указан'}', style: TextStyle(fontSize: 16, color: isDark ? Colors.white70 : Colors.black87)),
                               ],
                             ),
                             const SizedBox(height: 12),
@@ -445,19 +501,32 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                               children: [
                                 const Icon(Icons.devices, size: 18, color: Colors.grey),
                                 const SizedBox(width: 8),
-                                Text('${widget.orderData['device_type'] ?? 'Не указана'}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                Text('${widget.orderData['device_type'] ?? 'Не указана'}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            // --- ОТОБРАЖЕНИЕ СПОСОБА ОПЛАТЫ КЛИЕНТА ---
+                            Row(
+                              children: [
+                                Icon(_getPaymentIcon(paymentMethod), size: 18, color: Colors.orange),
+                                const SizedBox(width: 8),
+                                Text('Оплата: $paymentMethod', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: isDark ? Colors.orange[300] : Colors.orange[800])),
                               ],
                             ),
                             const SizedBox(height: 12),
                             Container(
                               padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(color: Colors.orange[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.orange[200]!)),
+                              decoration: BoxDecoration(
+                                color: isDark ? Colors.orange[900]?.withOpacity(0.2) : Colors.orange[50], 
+                                borderRadius: BorderRadius.circular(8), 
+                                border: Border.all(color: isDark ? Colors.orange[800]! : Colors.orange[200]!)
+                              ),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Icon(Icons.warning_amber_rounded, color: Colors.deepOrange, size: 20),
                                   const SizedBox(width: 8),
-                                  Expanded(child: Text('${widget.orderData['problem'] ?? 'Не указана'}', style: const TextStyle(fontSize: 15, color: Colors.black87))),
+                                  Expanded(child: Text('${widget.orderData['problem'] ?? 'Не указана'}', style: TextStyle(fontSize: 15, color: isDark ? Colors.white : Colors.black87))),
                                 ],
                               ),
                             ),
@@ -468,7 +537,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  _buildHistoryBlock(widget.orderData), 
+                  _buildHistoryBlock(widget.orderData, isDark), 
 
                   if (status == 'new') ...[
                     ElevatedButton.icon(
@@ -495,7 +564,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    const Text('Оценка ремонта (Варианты для приложения):', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                    Text('Оценка ремонта (Варианты для приложения):', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: isDark ? Colors.white70 : Colors.blueGrey)),
                     const SizedBox(height: 12),
                     ListView.builder(
                       shrinkWrap: true,
@@ -504,7 +573,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                       itemBuilder: (context, index) {
                         return Card(
                           elevation: 1,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey[300]!)),
+                          color: Theme.of(context).cardColor,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[300]!)),
                           margin: const EdgeInsets.only(bottom: 16),
                           child: Padding(
                             padding: const EdgeInsets.all(16.0),
@@ -513,7 +583,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text('Вариант ${index + 1}', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey[800])),
+                                    Text('Вариант ${index + 1}', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.blue[300] : Colors.blueGrey[800])),
                                     if (_options.length > 1)
                                       IconButton(
                                         icon: const Icon(Icons.delete_outline, color: Colors.red),
@@ -524,10 +594,12 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                                 ),
                                 TextField(
                                   controller: _options[index]['description'],
+                                  style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                                   decoration: InputDecoration(
                                     labelText: 'Диагноз / Что делаем',
+                                    labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
                                     filled: true,
-                                    fillColor: Colors.grey[100],
+                                    fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
                                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                                   ),
                                   maxLines: 2,
@@ -535,11 +607,13 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                                 const SizedBox(height: 12),
                                 TextField(
                                   controller: _options[index]['price'],
+                                  style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                                   decoration: InputDecoration(
                                     labelText: 'Цена (TMT)',
+                                    labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
                                     prefixIcon: const Icon(Icons.payments_outlined, color: Colors.green),
                                     filled: true,
-                                    fillColor: Colors.grey[100],
+                                    fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
                                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                                   ),
                                   keyboardType: TextInputType.number,
@@ -553,7 +627,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 12),
-                        side: BorderSide(color: Colors.blueGrey[400]!),
+                        side: BorderSide(color: isDark ? Colors.grey[600]! : Colors.blueGrey[400]!),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       ),
                       onPressed: _addOption,
@@ -578,11 +652,11 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(color: Colors.orange[100], borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.orange[300]!)),
-                      child: Row(
+                      child: const Row(
                         children: [
-                          const Icon(Icons.hourglass_bottom, color: Colors.deepOrange, size: 28),
-                          const SizedBox(width: 12),
-                          const Expanded(child: Text('Ожидаем решения клиента по предложенным вариантам', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange, fontSize: 16))),
+                          Icon(Icons.hourglass_bottom, color: Colors.deepOrange, size: 28),
+                          SizedBox(width: 12),
+                          Expanded(child: Text('Ожидаем решения клиента по предложенным вариантам', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange, fontSize: 16))),
                         ],
                       ),
                     ),
@@ -602,24 +676,25 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     const SizedBox(height: 24),
 
                     if (widget.orderData.containsKey('options')) ...[
-                      const Text('Предложенные варианты:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueGrey)),
+                      Text('Предложенные варианты:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white70 : Colors.blueGrey)),
                       const SizedBox(height: 12),
                       ...(widget.orderData['options'] as List<dynamic>).map((opt) {
                         return Card(
                           elevation: 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey[300]!)),
+                          color: Theme.of(context).cardColor,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[300]!)),
                           margin: const EdgeInsets.only(bottom: 8),
                           child: ListTile(
-                            title: Text(opt['description'] ?? ''),
+                            title: Text(opt['description'] ?? '', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
                             subtitle: Text('${opt['price']} TMT', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
                             leading: const Icon(Icons.help_outline, color: Colors.orange),
                           ),
                         );
                       }),
                     ] else ...[
-                      Text('Диагноз/Комментарий: ${widget.orderData['admin_comment'] ?? 'Нет'}', style: const TextStyle(fontSize: 16)),
+                      Text('Диагноз/Комментарий: ${widget.orderData['admin_comment'] ?? 'Нет'}', style: TextStyle(fontSize: 16, color: isDark ? Colors.white : Colors.black87)),
                       const SizedBox(height: 8),
-                      Text('Стоимость: ${widget.orderData['price'] ?? 'Не указана'} TMT', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      Text('Стоимость: ${widget.orderData['price'] ?? 'Не указана'} TMT', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
                     ],
                     const SizedBox(height: 24),
                     TextButton.icon(
@@ -633,17 +708,17 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                   if (status == 'in_progress') ...[
                     Container(
                       padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.blue[200]!)),
+                      decoration: BoxDecoration(color: isDark ? Colors.blue[900]?.withOpacity(0.3) : Colors.blue[50], borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.blue[200]!)),
                       child: Row(
                         children: [
-                          const Icon(Icons.handyman, color: Colors.blue, size: 28),
+                          Icon(Icons.handyman, color: isDark ? Colors.blue[300] : Colors.blue, size: 28),
                           const SizedBox(width: 12),
-                          const Expanded(child: Text('Заказ в процессе ремонта.', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue, fontSize: 16))),
+                          Expanded(child: Text('Заказ в процессе ремонта.', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.blue[300] : Colors.blue, fontSize: 16))),
                         ],
                       ),
                     ),
                     const SizedBox(height: 16),
-                    _buildAuditTrail(widget.orderData),
+                    _buildAuditTrail(widget.orderData, isDark),
                     const SizedBox(height: 32),
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
@@ -660,41 +735,41 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                   if (status == 'completed') ...[
                     Container(
                       padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(color: Colors.green[50], borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.green[300]!)),
+                      decoration: BoxDecoration(color: isDark ? Colors.green[900]?.withOpacity(0.3) : Colors.green[50], borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.green[300]!)),
                       child: Row(
                         children: [
-                          const Icon(Icons.celebration, color: Colors.green, size: 28),
+                          Icon(Icons.celebration, color: isDark ? Colors.green[300] : Colors.green, size: 28),
                           const SizedBox(width: 12),
-                          const Expanded(child: Text('Ремонт успешно завершен и выдан клиенту!', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 16))),
+                          Expanded(child: Text('Ремонт успешно завершен и выдан клиенту!', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.green[300] : Colors.green, fontSize: 16))),
                         ],
                       ),
                     ),
                     const SizedBox(height: 16),
-                    _buildAuditTrail(widget.orderData),
+                    _buildAuditTrail(widget.orderData, isDark),
                   ],
 
                   if (status == 'canceled') ...[
                     if (!_isBargaining) ...[
                       Container(
                         padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.red[300]!)),
+                        decoration: BoxDecoration(color: Colors.red[900]?.withOpacity(0.2), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.red[300]!)),
                         child: Row(
                           children: [
                             const Icon(Icons.error_outline, color: Colors.red, size: 28),
                             const SizedBox(width: 12),
-                            const Expanded(child: Text('Заказ отменен (клиентом или администратором)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontSize: 16))),
+                            Expanded(child: Text('Заказ отменен (клиентом или администратором)', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.red[300] : Colors.red, fontSize: 16))),
                           ],
                         ),
                       ),
                       const SizedBox(height: 16),
                       if (widget.orderData.containsKey('options')) ...[
-                        const Text('Были предложены варианты:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blueGrey)),
+                        Text('Были предложены варианты:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white70 : Colors.blueGrey)),
                         const SizedBox(height: 8),
                         ...(widget.orderData['options'] as List<dynamic>).map((opt) {
                           return Card(
                             elevation: 0,
-                            color: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey[200]!)),
+                            color: Theme.of(context).cardColor,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[200]!)),
                             margin: const EdgeInsets.only(bottom: 8),
                             child: ListTile(
                               title: Text(opt['description'] ?? '', style: const TextStyle(color: Colors.grey, decoration: TextDecoration.lineThrough)),
@@ -724,7 +799,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                         label: const Text('ПРЕДЛОЖИТЬ НОВЫЕ УСЛОВИЯ (ТОРГ)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                       ),
                     ] else ...[
-                      const Text('Новые варианты ремонта (Скидка / БУ деталь):', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                      Text('Новые варианты ремонта (Скидка / БУ деталь):', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white70 : Colors.blueGrey)),
                       const SizedBox(height: 12),
                       ListView.builder(
                         shrinkWrap: true,
@@ -733,6 +808,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                         itemBuilder: (context, index) {
                           return Card(
                             elevation: 1,
+                            color: Theme.of(context).cardColor,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.blue[300]!)),
                             margin: const EdgeInsets.only(bottom: 16),
                             child: Padding(
@@ -742,7 +818,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Text('Спец-предложение ${index + 1}', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue[800])),
+                                      Text('Спец-предложение ${index + 1}', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue[300])),
                                       if (_options.length > 1)
                                         IconButton(
                                           icon: const Icon(Icons.delete_outline, color: Colors.red),
@@ -752,10 +828,12 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                                   ),
                                   TextField(
                                     controller: _options[index]['description'],
+                                    style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                                     decoration: InputDecoration(
                                       labelText: 'Новые условия (напр., скидка 15%)',
+                                      labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
                                       filled: true,
-                                      fillColor: Colors.blue[50],
+                                      fillColor: isDark ? Colors.grey[800] : Colors.blue[50],
                                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                                     ),
                                     maxLines: 2,
@@ -763,11 +841,13 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                                   const SizedBox(height: 12),
                                   TextField(
                                     controller: _options[index]['price'],
+                                    style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                                     decoration: InputDecoration(
                                       labelText: 'Новая цена (TMT)',
+                                      labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
                                       prefixIcon: const Icon(Icons.payments_outlined, color: Colors.green),
                                       filled: true,
-                                      fillColor: Colors.blue[50],
+                                      fillColor: isDark ? Colors.grey[800] : Colors.blue[50],
                                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                                     ),
                                     keyboardType: TextInputType.number,
