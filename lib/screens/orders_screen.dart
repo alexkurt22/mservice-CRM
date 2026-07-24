@@ -19,7 +19,7 @@ class OrdersScreen extends StatefulWidget {
 
 class _OrdersScreenState extends State<OrdersScreen> {
 
-  Widget _buildOrdersList(String statusKey) {
+  Widget _buildOrdersList(String statusKey, bool isDark) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('orders')
@@ -37,9 +37,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.inbox_outlined, size: 64, color: Colors.blueGrey[200]),
+                Icon(Icons.inbox_outlined, size: 64, color: isDark ? Colors.grey[700] : Colors.blueGrey[200]),
                 const SizedBox(height: 16),
-                Text('В этой категории пока пусто', style: TextStyle(color: Colors.blueGrey[400], fontSize: 16)),
+                Text('В этой категории пока пусто', style: TextStyle(color: isDark ? Colors.grey[400] : Colors.blueGrey[400], fontSize: 16)),
               ],
             ),
           );
@@ -87,8 +87,12 @@ class _OrdersScreenState extends State<OrdersScreen> {
             }
 
             return Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 1,
+              color: Theme.of(context).cardColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: isDark ? Colors.grey[800]! : Colors.transparent)
+              ),
               margin: const EdgeInsets.only(bottom: 12.0),
               child: InkWell(
                 borderRadius: BorderRadius.circular(12),
@@ -114,15 +118,15 @@ class _OrdersScreenState extends State<OrdersScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start, 
                           children: [
-                            Text(clientName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
+                            Text(clientName, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : Colors.black87)),
                             const SizedBox(height: 4),
-                            Text(deviceType, style: TextStyle(color: Colors.blueGrey[800], fontWeight: FontWeight.w600)),
+                            Text(deviceType, style: TextStyle(color: isDark ? Colors.grey[300] : Colors.blueGrey[800], fontWeight: FontWeight.w600)),
                             const SizedBox(height: 4),
                             Text(
                               data['problem'] ?? 'Проблема не указана',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(color: Colors.blueGrey[400], fontSize: 13),
+                              style: TextStyle(color: isDark ? Colors.grey[500] : Colors.blueGrey[400], fontSize: 13),
                             ),
                           ],
                         ),
@@ -141,12 +145,14 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.blueGrey[900],
+        backgroundColor: isDark ? Colors.grey[900] : Colors.blueGrey[900],
         foregroundColor: Colors.white,
-        title: Text(widget.title), // Заголовок теперь меняется динамически
+        title: Text(widget.title), 
       ),
       floatingActionButton: widget.status == 'in_progress'
           ? Padding(
@@ -164,8 +170,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
               ),
             )
           : null,
-      body: _buildOrdersList(widget.status), // Отрисовываем только нужный статус
+      body: _buildOrdersList(widget.status, isDark), 
     );
   }
 }
-
