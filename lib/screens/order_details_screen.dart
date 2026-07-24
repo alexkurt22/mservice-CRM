@@ -112,26 +112,121 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
-  // --- ДИАЛОГ ПРИНЯТИЯ В РАБОТУ С УЧЕТОМ ДОЛГОВ ---
   Future<void> _showForceStartDialog() async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final priceController = TextEditingController(text: widget.orderData['price']?.toString() ?? '');
-    final paidController = TextEditingController();
     final commentController = TextEditingController();
     
     await showDialog(
       context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        title: Text('Принять в работу (Устно)', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Укажите согласованную цену и диагноз. Заказ сразу перейдет в статус "В работе".', style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : Colors.blueGrey)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: priceController,
+              keyboardType: TextInputType.number,
+              style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+              decoration: InputDecoration(
+                labelText: 'Итоговая цена (TMT)',
+                labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.payments, color: Colors.green),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: commentController,
+              style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+              decoration: InputDecoration(
+                labelText: 'Диагноз / Комментарий',
+                labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
+                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.build),
+              ),
+              maxLines: 2,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[600], foregroundColor: Colors.white),
+            onPressed: () async {
+              final price = priceController.text.trim();
+              final comment = commentController.text.trim();
+              if (price.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Укажите цену!'), backgroundColor: Colors.red));
+                return;
+              }
+              Navigator.pop(ctx);
+              await _forceStartOrder(price, comment);
+            },
+            child: const Text('Принять в работу'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _forceStartOrder(String price, String comment) async {
+    setState(() => _isLoading = true);
+    try {
+      await FirebaseFirestore.instance.collection('orders').doc(widget.orderId).update({
+        'status': 'in_progress',
+        'price': price,
+        'admin_comment': comment.isNotEmpty ? comment : 'Согласовано устно',
+        'has_unread_update': true,
+        'options': FieldValue.delete(),
+        'selected_option_index': FieldValue.delete(),
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Заказ переведен в работу!'), backgroundColor: Colors.green),
+        );
+        Navigator.pop(context); 
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // --- УМНОЕ ОКНО ЗАВЕРШЕНИЯ РЕМОНТА (УПРОЩЕННОЕ) ---
+  Future<void> _showCompletionDialog() async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    final initialPrice = widget.orderData['price']?.toString() ?? '';
+    final priceController = TextEditingController(text: initialPrice);
+    final paidController = TextEditingController(text: initialPrice); 
+    
+    int refillsCount = 0;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setStateDialog) {
           return AlertDialog(
             backgroundColor: Theme.of(context).cardColor,
-            title: Text('Принять в работу / Закрыть', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+            title: Text('Выдача заказа', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Укажите финансовые данные по заказу.', style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : Colors.blueGrey)),
-                  const SizedBox(height: 16),
+                  Text('1. ФИНАНСЫ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDark ? Colors.white70 : Colors.blueGrey)),
+                  const SizedBox(height: 12),
                   TextField(
                     controller: priceController,
                     keyboardType: TextInputType.number,
@@ -149,25 +244,36 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     keyboardType: TextInputType.number,
                     style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                     decoration: InputDecoration(
-                      labelText: 'Оплачено клиентом (TMT)',
+                      labelText: 'Оплачено сейчас (TMT)',
                       labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
                       border: const OutlineInputBorder(),
                       prefixIcon: const Icon(Icons.account_balance_wallet, color: Colors.blue),
-                      helperText: 'Если клиент платит не всю сумму, остаток уйдет в долг',
+                      helperText: 'Разница уйдет в ДОЛГ клиента',
                       helperStyle: TextStyle(color: isDark ? Colors.white38 : Colors.grey),
                     ),
                   ),
+                  const SizedBox(height: 24),
+                  
+                  Text('2. ДОБАВИТЬ ЗАПРАВКИ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDark ? Colors.white70 : Colors.blueGrey)),
                   const SizedBox(height: 12),
-                  TextField(
-                    controller: commentController,
-                    style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-                    decoration: InputDecoration(
-                      labelText: 'Диагноз / Комментарий',
-                      labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
-                      border: const OutlineInputBorder(),
-                      prefixIcon: const Icon(Icons.build),
-                    ),
-                    maxLines: 2,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Количество:', style: TextStyle(fontSize: 16, color: isDark ? Colors.white : Colors.black87)),
+                      Row(
+                        children: [
+                          IconButton(
+                            onPressed: refillsCount > 0 ? () => setStateDialog(() => refillsCount--) : null,
+                            icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+                          ),
+                          Text('$refillsCount шт.', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                          IconButton(
+                            onPressed: () => setStateDialog(() => refillsCount++),
+                            icon: const Icon(Icons.add_circle_outline, color: Colors.green),
+                          ),
+                        ],
+                      )
+                    ],
                   ),
                 ],
               ),
@@ -178,21 +284,20 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                 child: const Text('Отмена', style: TextStyle(color: Colors.grey)),
               ),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[600], foregroundColor: Colors.white),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green[600], foregroundColor: Colors.white),
                 onPressed: () async {
                   final priceStr = priceController.text.trim();
                   final paidStr = paidController.text.trim();
-                  final comment = commentController.text.trim();
-
+                  
                   if (priceStr.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Укажите цену!'), backgroundColor: Colors.red));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Укажите итоговую цену!'), backgroundColor: Colors.red));
                     return;
                   }
 
                   Navigator.pop(ctx);
-                  await _forceStartOrder(priceStr, paidStr, comment);
+                  await _processOrderCompletion(priceStr, paidStr, refillsCount);
                 },
-                child: const Text('Сохранить и в работу'),
+                child: const Text('ВЫДАТЬ КЛИЕНТУ', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ],
           );
@@ -201,38 +306,49 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     );
   }
 
-  Future<void> _forceStartOrder(String priceStr, String paidStr, String comment) async {
+  // --- ЛОГИКА СОХРАНЕНИЯ ЗАВЕРШЕНИЯ ---
+  Future<void> _processOrderCompletion(String priceStr, String paidStr, int refills) async {
     setState(() => _isLoading = true);
     try {
       double price = double.tryParse(priceStr) ?? 0;
-      double paid = double.tryParse(paidStr) ?? price; // Если не указал сколько оплатил, считаем что оплатил всё
+      double paid = paidStr.isEmpty ? price : (double.tryParse(paidStr) ?? price); 
       double debt = price - paid;
       if (debt < 0) debt = 0;
 
-      await FirebaseFirestore.instance.collection('orders').doc(widget.orderId).update({
-        'status': 'in_progress',
+      final batch = FirebaseFirestore.instance.batch();
+      
+      final orderRef = FirebaseFirestore.instance.collection('orders').doc(widget.orderId);
+      batch.update(orderRef, {
+        'status': 'completed',
         'price': priceStr,
         'paid_amount': paid.toString(),
         'debt_amount': debt.toString(),
-        'admin_comment': comment.isNotEmpty ? comment : 'Согласовано устно',
+        'added_refills': refills,
+        'completed_at': FieldValue.serverTimestamp(),
         'has_unread_update': true,
-        'options': FieldValue.delete(),
-        'selected_option_index': FieldValue.delete(),
       });
+
+      final phone = widget.orderData['phone'];
+      if (phone != null && phone.isNotEmpty && refills > 0) {
+        final clientRef = FirebaseFirestore.instance.collection('clients').doc(phone);
+        batch.set(clientRef, {
+          'cartridge_refills': FieldValue.increment(refills)
+        }, SetOptions(merge: true));
+      }
+
+      await batch.commit();
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Заказ переведен в работу с учетом финансов!'), backgroundColor: Colors.green),
-        );
-        Navigator.pop(context); 
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ремонт успешно завершен!'), backgroundColor: Colors.green));
+        Navigator.pop(context);
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
 
   Future<void> _updateStatus(String newStatus, {bool isAwaitingApproval = false, bool isBargainingMode = false}) async {
     setState(() => _isLoading = true);
@@ -241,10 +357,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         'status': newStatus,
         'has_unread_update': true,
       };
-
-      if (newStatus == 'completed') {
-        updateData['completed_at'] = FieldValue.serverTimestamp(); 
-      }
 
       if (isAwaitingApproval) {
         bool isValid = true;
@@ -300,8 +412,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           }
         }
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isBargainingMode ? 'Новые условия отправлены!' : 'Отправлено на согласование'), backgroundColor: Colors.green));
-      } else if (newStatus == 'completed') {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ремонт завершен'), backgroundColor: Colors.green));
       } else if (newStatus == 'canceled') {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Заказ отозван')));
       }
@@ -417,7 +527,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           Text('Диагноз/Комментарий: ${data['admin_comment'] ?? 'Нет'}', style: TextStyle(fontSize: 16, color: isDark ? Colors.white : Colors.black87)),
           const SizedBox(height: 8),
           Text('Стоимость: ${data['price'] ?? 'Не указана'} TMT', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green)),
-          if (data.containsKey('debt_amount') && double.tryParse(data['debt_amount'].toString())! > 0) ...[
+          if (data.containsKey('debt_amount') && double.tryParse(data['debt_amount'].toString()) != null && double.parse(data['debt_amount'].toString()) > 0) ...[
             const SizedBox(height: 4),
             Text('Имеется долг: ${data['debt_amount']} TMT', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red)),
           ],
@@ -426,7 +536,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
-  // --- ВСПОМОГАТЕЛЬНЫЙ ВИДЖЕТ ИКОНКИ ОПЛАТЫ ---
   IconData _getPaymentIcon(String method) {
     if (method.contains('карта')) return Icons.credit_card;
     if (method.contains('Перечисление')) return Icons.account_balance;
@@ -437,7 +546,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     String status = widget.orderData['status'] ?? 'unknown';
-    String paymentMethod = widget.orderData['payment_method'] ?? 'Наличные';
+    String paymentMethod = widget.orderData['payment_method'] ?? 'Наличные (или не указано)';
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -720,15 +829,17 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     const SizedBox(height: 16),
                     _buildAuditTrail(widget.orderData, isDark),
                     const SizedBox(height: 32),
+                    
+                    // --- КНОПКА ЗАВЕРШЕНИЯ ТЕПЕРЬ ВЫЗЫВАЕТ УМНЫЙ ДИАЛОГ ---
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green[600],
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      onPressed: () => _updateStatus('completed'),
+                      onPressed: _showCompletionDialog,
                       icon: const Icon(Icons.task_alt, color: Colors.white),
-                      label: const Text('РЕМОНТ ЗАВЕРШЕН (ГОТОВО К ВЫДАЧЕ)', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
+                      label: const Text('РЕМОНТ ЗАВЕРШЕН (ВЫДАТЬ)', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
                     ),
                   ],
 
