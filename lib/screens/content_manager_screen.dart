@@ -1,9 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
-// Если у тебя еще не добавлены эти пакеты, добавь их потом в pubspec.yaml:
-// image_picker: ^1.0.4
-// firebase_storage: ^11.6.0
 
 class ContentManagerScreen extends StatefulWidget {
   const ContentManagerScreen({super.key});
@@ -13,7 +13,8 @@ class ContentManagerScreen extends StatefulWidget {
 }
 
 class _ContentManagerScreenState extends State<ContentManagerScreen> {
-  
+  final ImagePicker _picker = ImagePicker();
+
   // --- ОКНО СОЗДАНИЯ КОНТЕНТА (ПОСТА) ---
   void _showCreatePostDialog() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -21,8 +22,27 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
     final contentController = TextEditingController();
     String selectedType = 'Акция'; // 'Акция' или 'Новость'
     bool isUploading = false;
+    File? selectedImage;
 
-    // Функция-помощник для вставки тегов форматирования
+    // Выбор и сжатие фото
+    Future<void> pickImage(StateSetter setSheetState) async {
+      try {
+        final XFile? image = await _picker.pickImage(
+          source: ImageSource.gallery,
+          imageQuality: 70, // Сжимаем качество до 70%, чтобы экономить место и трафик
+          maxWidth: 1200,    // Ограничиваем максимальную ширину
+        );
+        if (image != null) {
+          setSheetState(() {
+            selectedImage = File(image.path);
+          });
+        }
+      } catch (e) {
+        debugPrint('Ошибка выбора фото: $e');
+      }
+    }
+
+    // Функция-помощник для вставки тегов форматирования текста
     void insertFormatting(String prefix, String suffix) {
       final text = contentController.text;
       final selection = contentController.selection;
@@ -48,7 +68,7 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
               left: 16, right: 16, top: 16
             ),
             child: FractionallySizedBox(
-              heightFactor: 0.85, // Занимает 85% экрана для удобного ввода
+              heightFactor: 0.90, // Занимает 90% экрана для удобного заполнения
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -98,7 +118,7 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                   ),
                   const SizedBox(height: 12),
 
-                  // --- ПАНЕЛЬ ФОРМАТИРОВАНИЯ ---
+                  // --- ПАНЕЛЬ ФОРМАТИРОВАНИЯ ТЕКСТА ---
                   Container(
                     decoration: BoxDecoration(color: isDark ? Colors.grey[800] : Colors.blueGrey[50], borderRadius: BorderRadius.circular(8)),
                     padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -118,44 +138,47 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                       controller: contentController,
                       style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                       decoration: InputDecoration(
-                        labelText: 'Основной текст',
+                        labelText: 'Основной текст статьи',
                         alignLabelWithHint: true,
                         labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
                         border: const OutlineInputBorder(),
-                        helperText: 'Используйте панель выше для красоты',
+                        helperText: 'Используйте панель выше для аккуратного форматирования',
                       ),
-                      maxLines: 15,
+                      maxLines: 12,
                       keyboardType: TextInputType.multiline,
                     ),
                   ),
                   const SizedBox(height: 12),
 
-                  // --- КНОПКИ ЗАГРУЗКИ МЕДИА ---
+                  // --- ПРЕВЬЮ И ВЫБОР ФОТО ---
                   Row(
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Тут будет вызов ImagePicker(imageQuality: 70)')));
-                          }, 
+                          onPressed: () => pickImage(setSheetState), 
                           icon: const Icon(Icons.image, color: Colors.green), 
-                          label: const Text('ФОТО', style: TextStyle(color: Colors.green))
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Тут будет выбор видео и сжатие (до 15 сек)')));
-                          }, 
-                          icon: const Icon(Icons.videocam, color: Colors.blue), 
-                          label: const Text('ВИДЕО', style: TextStyle(color: Colors.blue))
+                          label: Text(selectedImage == null ? 'ВЫБРАТЬ ФОТО' : 'ИЗМЕНИТЬ ФОТО', style: const TextStyle(color: Colors.green))
                         ),
                       ),
                     ],
                   ),
+                  
+                  if (selectedImage != null) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(Icons.check_circle, color: Colors.green, size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text('Фото выбрано и готово к сжатию', style: TextStyle(fontSize: 12, color: Colors.green[700]))),
+                        TextButton(
+                          onPressed: () => setSheetState(() => selectedImage = null),
+                          child: const Text('Удалить', style: TextStyle(color: Colors.red, fontSize: 12)),
+                        )
+                      ],
+                    ),
+                  ],
+
                   const SizedBox(height: 16),
 
                   ElevatedButton(
@@ -177,12 +200,26 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                       setSheetState(() => isUploading = true);
 
                       try {
+                        String? imageUrl;
+
+                        // Если выбрали картинку — загружаем в Firebase Storage с конвертацией
+                        if (selectedImage != null) {
+                          final ref = FirebaseStorage.instance
+                              .ref()
+                              .child('news_images')
+                              .child('${DateTime.now().millisecondsSinceEpoch}.jpg');
+                          
+                          await ref.putFile(selectedImage!);
+                          imageUrl = await ref.getDownloadURL();
+                        }
+
+                        // Сохраняем пост в Firestore
                         await FirebaseFirestore.instance.collection('news_feed').add({
                           'title': title,
                           'content': content,
                           'type': selectedType,
-                          'image_url': null, // Сюда потом пойдет ссылка из Storage
-                          'video_url': null, // Сюда ссылка на видео
+                          'image_url': imageUrl,
+                          'video_url': null,
                           'created_at': FieldValue.serverTimestamp(),
                           'is_active': true,
                         });
@@ -264,6 +301,7 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
               final type = data['type'] ?? 'Новость';
               final title = data['title'] ?? 'Без заголовка';
               final content = data['content'] ?? '';
+              final imageUrl = data['image_url'];
               final isActive = data['is_active'] ?? true;
               
               String dateStr = '';
@@ -280,6 +318,7 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                   side: BorderSide(color: isDark ? Colors.grey[800]! : Colors.transparent)
                 ),
                 margin: const EdgeInsets.only(bottom: 16),
+                clipBehavior: Clip.antiAlias,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -288,7 +327,6 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                       decoration: BoxDecoration(
                         color: type == 'Акция' ? (isDark ? Colors.orange[900]!.withOpacity(0.4) : Colors.orange[50]) : (isDark ? Colors.blue[900]!.withOpacity(0.4) : Colors.blue[50]),
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -304,8 +342,22 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                         ],
                       ),
                     ),
+
+                    // Картинка поста (если есть)
+                    if (imageUrl != null && imageUrl.toString().isNotEmpty)
+                      Image.network(
+                        imageUrl,
+                        height: 180,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        loadingBuilder: (context, child, progress) {
+                          if (progress == null) return child;
+                          return const SizedBox(height: 180, child: Center(child: CircularProgressIndicator()));
+                        },
+                        errorBuilder: (context, error, stackTrace) => const SizedBox(height: 50, child: Center(child: Text('Ошибка загрузки фото'))),
+                      ),
                     
-                    // Контент поста
+                    // Текст поста
                     Padding(
                       padding: const EdgeInsets.all(16.0),
                       child: Column(
