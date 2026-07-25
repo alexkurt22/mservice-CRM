@@ -11,15 +11,19 @@ class CategoriesManagementScreen extends StatelessWidget {
   // --- 1. ДОБАВИТЬ НОВОЕ ГЛОБАЛЬНОЕ НАПРАВЛЕНИЕ ---
   Future<void> _addDirection(BuildContext context) async {
     final controller = TextEditingController();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Новое направление', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Theme.of(context).cardColor,
+        title: Text('Новое направление', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
         content: TextField(
           controller: controller,
-          decoration: const InputDecoration(
+          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+          decoration: InputDecoration(
             hintText: 'Например: Автосервис',
-            border: OutlineInputBorder(),
+            hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey),
+            border: const OutlineInputBorder(),
           ),
           autofocus: true,
           textCapitalization: TextCapitalization.sentences,
@@ -27,14 +31,14 @@ class CategoriesManagementScreen extends StatelessWidget {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена', style: TextStyle(color: Colors.grey))),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey[900], foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[700], foregroundColor: Colors.white),
             onPressed: () async {
               final val = controller.text.trim();
               if (val.isNotEmpty) {
                 // Создаем пустой массив для нового направления
                 await _categoriesDoc.set({val: []}, SetOptions(merge: true));
               }
-              Navigator.pop(ctx);
+              if (ctx.mounted) Navigator.pop(ctx);
             },
             child: const Text('Добавить'),
           ),
@@ -46,15 +50,19 @@ class CategoriesManagementScreen extends StatelessWidget {
   // --- 2. ДОБАВИТЬ ПОДКАТЕГОРИЮ В НАПРАВЛЕНИЕ ---
   Future<void> _addSubCategory(BuildContext context, String direction) async {
     final controller = TextEditingController();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Новая подкатегория в\n"$direction"', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        backgroundColor: Theme.of(context).cardColor,
+        title: Text('Новая подкатегория в\n"$direction"', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : Colors.black87)),
         content: TextField(
           controller: controller,
-          decoration: const InputDecoration(
+          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+          decoration: InputDecoration(
             hintText: 'Например: Замена масла',
-            border: OutlineInputBorder(),
+            hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey),
+            border: const OutlineInputBorder(),
           ),
           autofocus: true,
           textCapitalization: TextCapitalization.sentences,
@@ -62,7 +70,7 @@ class CategoriesManagementScreen extends StatelessWidget {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена', style: TextStyle(color: Colors.grey))),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey[900], foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[700], foregroundColor: Colors.white),
             onPressed: () async {
               final val = controller.text.trim();
               if (val.isNotEmpty) {
@@ -70,7 +78,7 @@ class CategoriesManagementScreen extends StatelessWidget {
                   direction: FieldValue.arrayUnion([val])
                 }, SetOptions(merge: true));
               }
-              Navigator.pop(ctx);
+              if (ctx.mounted) Navigator.pop(ctx);
             },
             child: const Text('Добавить'),
           ),
@@ -82,12 +90,15 @@ class CategoriesManagementScreen extends StatelessWidget {
   // --- 3. ПЕРЕИМЕНОВАТЬ ПОДКАТЕГОРИЮ ---
   Future<void> _editSubCategory(BuildContext context, String direction, String oldName) async {
     final controller = TextEditingController(text: oldName);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Переименовать', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Theme.of(context).cardColor,
+        title: Text('Переименовать', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
         content: TextField(
           controller: controller,
+          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
           decoration: const InputDecoration(border: OutlineInputBorder()),
           autofocus: true,
           textCapitalization: TextCapitalization.sentences,
@@ -95,12 +106,10 @@ class CategoriesManagementScreen extends StatelessWidget {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена', style: TextStyle(color: Colors.grey))),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey[900], foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[700], foregroundColor: Colors.white),
             onPressed: () async {
               final val = controller.text.trim();
               if (val.isNotEmpty && val != oldName) {
-                // Firebase не умеет переименовывать элементы массива напрямую.
-                // Поэтому мы удаляем старое значение и добавляем новое за один запрос.
                 await _categoriesDoc.update({
                   direction: FieldValue.arrayRemove([oldName])
                 });
@@ -108,7 +117,7 @@ class CategoriesManagementScreen extends StatelessWidget {
                   direction: FieldValue.arrayUnion([val])
                 });
               }
-              Navigator.pop(ctx);
+              if (ctx.mounted) Navigator.pop(ctx);
             },
             child: const Text('Сохранить'),
           ),
@@ -131,7 +140,7 @@ class CategoriesManagementScreen extends StatelessWidget {
     });
   }
 
-  // --- ЗАГРУЗКА БАЗОВОГО СПИСКА СУПЕР-ПРИЛОЖЕНИЯ ---
+  // --- ЗАГРУЗКА БАЗОВОГО СПИСКА ---
   Future<void> _loadDefaultSuperAppList() async {
     await _categoriesDoc.set({
       'Компьютерный сервис': ['Смартфон', 'Ноутбук', 'Компьютер (ПК)', 'Планшет', 'Принтер', 'Монитор', 'Комплектующие'],
@@ -142,10 +151,12 @@ class CategoriesManagementScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.blueGrey[900],
+        backgroundColor: isDark ? Colors.grey[900] : Colors.blueGrey[900],
         foregroundColor: Colors.white,
         title: const Text('Управление категориями', style: TextStyle(fontSize: 16)),
       ),
@@ -175,10 +186,10 @@ class CategoriesManagementScreen extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.account_tree_outlined, size: 64, color: Colors.grey[400]),
+                    Icon(Icons.account_tree_outlined, size: 64, color: Colors.grey[600]),
                     const SizedBox(height: 16),
-                    const Text('Вы перешли на архитектуру Супер-приложения!\nДобавьте первое глобальное направление (например, "Компьютеры").', 
-                      textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 15)),
+                    Text('Вы перешли на архитектуру Супер-приложения!\nДобавьте первое глобальное направление (например, "Компьютеры").', 
+                      textAlign: TextAlign.center, style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey, fontSize: 15)),
                     const SizedBox(height: 24),
                     ElevatedButton.icon(
                       onPressed: _loadDefaultSuperAppList,
@@ -191,7 +202,6 @@ class CategoriesManagementScreen extends StatelessWidget {
             );
           }
 
-          // Сортируем ключи (направления) по алфавиту для красоты
           final directions = data.keys.toList()..sort();
 
           return ListView.builder(
@@ -203,36 +213,38 @@ class CategoriesManagementScreen extends StatelessWidget {
 
               return Card(
                 elevation: 2,
+                color: Theme.of(context).cardColor,
                 margin: const EdgeInsets.only(bottom: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: isDark ? Colors.grey[800]! : Colors.transparent)
+                ),
                 clipBehavior: Clip.antiAlias,
                 child: ExpansionTile(
-                  backgroundColor: Colors.blueGrey[50],
-                  leading: const Icon(Icons.business_center, color: Colors.blueGrey),
-                  title: Text(dirName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  backgroundColor: isDark ? Colors.grey[850] : Colors.blueGrey[50],
+                  leading: Icon(Icons.business_center, color: isDark ? Colors.blueGrey[300] : Colors.blueGrey),
+                  title: Text(dirName, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : Colors.black87)),
                   childrenPadding: const EdgeInsets.only(bottom: 8),
                   children: [
-                    const Divider(height: 1),
-                    // Список подкатегорий
+                    Divider(height: 1, color: isDark ? Colors.grey[700] : Colors.grey[300]),
                     ...subCategories.map((sub) => ListTile(
                           contentPadding: const EdgeInsets.only(left: 32, right: 16),
-                          leading: const Icon(Icons.subdirectory_arrow_right, size: 20, color: Colors.grey),
-                          title: Text(sub, style: const TextStyle(fontSize: 14)),
+                          leading: Icon(Icons.subdirectory_arrow_right, size: 20, color: isDark ? Colors.grey[400] : Colors.grey),
+                          title: Text(sub, style: TextStyle(fontSize: 14, color: isDark ? Colors.white70 : Colors.black87)),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               IconButton(
-                                icon: const Icon(Icons.edit, color: Colors.blue, size: 20),
+                                icon: Icon(Icons.edit, color: isDark ? Colors.blue[300] : Colors.blue, size: 20),
                                 onPressed: () => _editSubCategory(context, dirName, sub),
                               ),
                               IconButton(
-                                icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                                icon: Icon(Icons.delete_outline, color: isDark ? Colors.red[300] : Colors.red, size: 20),
                                 onPressed: () => _removeSubCategory(dirName, sub),
                               ),
                             ],
                           ),
                         )),
-                    // Кнопка добавления подкатегории и удаления всего направления
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       child: Row(
@@ -246,8 +258,8 @@ class CategoriesManagementScreen extends StatelessWidget {
                           ),
                           ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blueGrey[100],
-                              foregroundColor: Colors.blueGrey[900],
+                              backgroundColor: isDark ? Colors.blueGrey[700] : Colors.blueGrey[100],
+                              foregroundColor: isDark ? Colors.white : Colors.blueGrey[900],
                               elevation: 0,
                             ),
                             onPressed: () => _addSubCategory(context, dirName),
@@ -267,3 +279,4 @@ class CategoriesManagementScreen extends StatelessWidget {
     );
   }
 }
+
