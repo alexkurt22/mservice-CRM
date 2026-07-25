@@ -11,7 +11,7 @@ import 'orders_screen.dart';
 import 'database_cleanup_screen.dart'; 
 import 'settings_screen.dart';
 import 'chat_lists_screen.dart'; 
-import 'statistics_screen.dart'; // ВАЖНО: Подключили экран статистики
+import 'statistics_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -41,10 +41,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     FirebaseMessaging messaging = FirebaseMessaging.instance;
     await messaging.requestPermission();
     
-    // Подписка на общую рацию (для системных уведомлений от клиентов)
     await messaging.subscribeToTopic('admins'); 
 
-    // НОВОЕ: СОХРАНЯЕМ ЛИЧНЫЙ ТОКЕН СОТРУДНИКА ДЛЯ ПЕРЕПИСОК 1-НА-1
     if (_myPhone != 'admin') {
       String? token = await messaging.getToken();
       if (token != null) {
@@ -53,7 +51,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }, SetOptions(merge: true));
       }
 
-      // Обновляем токен, если Google его вдруг поменяет
       messaging.onTokenRefresh.listen((newToken) async {
         await FirebaseFirestore.instance.collection('employees').doc(_myPhone).set({
           'fcm_token': newToken,
@@ -89,12 +86,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
                   child: Text('ИНСТРУМЕНТЫ', style: TextStyle(color: isDark ? Colors.grey[500] : Colors.blueGrey[400], fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.2)),
                 ),
+                
+                // --- НОВЫЙ БЛОК: ОТМЕНЕННЫЕ ЗАКАЗЫ (С БЕЙДЖЕМ) ---
+                StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'canceled').snapshots(),
+                  builder: (context, snapshot) {
+                    int unreadCanceledCount = 0;
+                    if (snapshot.hasData) {
+                      unreadCanceledCount = snapshot.data!.docs.where((d) {
+                        final data = d.data() as Map<String, dynamic>;
+                        return data['has_unread_update'] == true;
+                      }).length;
+                    }
+                    
+                    return ListTile(
+                      leading: Icon(Icons.remove_shopping_cart, color: isDark ? Colors.red[300] : Colors.red[700]),
+                      title: Text('Отмененные заказы', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                      trailing: unreadCanceledCount > 0 
+                          ? Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(12)),
+                              child: Text('$unreadCanceledCount', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                            )
+                          : null,
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(status: 'canceled', title: 'Отмененные заказы')));
+                      },
+                    );
+                  },
+                ),
+                Divider(height: 1, color: isDark ? Colors.grey[800] : Colors.grey[300]),
+
                 ListTile(
                   leading: Icon(Icons.bar_chart, color: isDark ? Colors.white70 : Colors.blueGrey[700]),
                   title: Text('Статистика', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
                   onTap: () {
-                    Navigator.pop(context); // Закрываем меню
-                    // Открываем наш новый экран статистики!
+                    Navigator.pop(context);
                     Navigator.push(context, MaterialPageRoute(builder: (_) => const StatisticsScreen()));
                   },
                 ),
@@ -218,6 +246,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
         foregroundColor: Colors.white,
         title: const Text('Сводка CRM', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         elevation: 0,
+        // --- НОВЫЙ БЛОК: ИНДИКАТОР НА ГАМБУРГЕРЕ ---
+        leading: StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'canceled').snapshots(),
+          builder: (context, snapshot) {
+            int unreadCount = 0;
+            if (snapshot.hasData) {
+              unreadCount = snapshot.data!.docs.where((d) {
+                final data = d.data() as Map<String, dynamic>;
+                return data['has_unread_update'] == true;
+              }).length;
+            }
+            return Builder(
+              builder: (ctx) => IconButton(
+                icon: Badge(
+                  isLabelVisible: unreadCount > 0,
+                  label: Text('$unreadCount', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  backgroundColor: Colors.red,
+                  child: const Icon(Icons.menu),
+                ),
+                onPressed: () => Scaffold.of(ctx).openDrawer(),
+              ),
+            );
+          },
+        ),
       ),
       drawer: _buildDrawer(context, isDark), 
       
