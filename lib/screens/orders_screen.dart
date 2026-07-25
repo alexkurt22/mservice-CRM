@@ -87,6 +87,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
         docs.sort((a, b) {
           final aData = a.data() as Map<String, dynamic>;
           final bData = b.data() as Map<String, dynamic>;
+          
+          // ВАЖНО: Сначала показываем непрочитанные заказы
+          bool aUnread = aData['has_unread_update'] == true;
+          bool bUnread = bData['has_unread_update'] == true;
+          if (aUnread && !bUnread) return -1;
+          if (!aUnread && bUnread) return 1;
+
           final aTime = aData['created_at'] as Timestamp?;
           final bTime = bData['created_at'] as Timestamp?;
           if (aTime == null && bTime == null) return 0;
@@ -109,6 +116,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
             final clientName = data['client_name'] ?? 'Неизвестный клиент';
             final deviceType = data['device_type'] ?? 'Устройство';
             final currentStatus = data['status'] ?? 'new';
+            final hasUnreadUpdate = data['has_unread_update'] == true; // Флаг непрочитанного
             
             Color iconColor = Colors.orange;
             IconData statusIcon = Icons.new_releases;
@@ -122,25 +130,46 @@ class _OrdersScreenState extends State<OrdersScreen> {
             } else if (currentStatus == 'completed') {
               iconColor = Colors.teal;
               statusIcon = Icons.check_circle;
+            } else if (currentStatus == 'canceled') {
+              iconColor = Colors.red;
+              statusIcon = Icons.cancel;
+            }
+
+            // ОПРЕДЕЛЯЕМ ФОН КАРТОЧКИ ДЛЯ ВНИМАНИЯ
+            Color cardColor = Theme.of(context).cardColor;
+            BorderSide borderSide = BorderSide(color: isDark ? Colors.grey[800]! : Colors.transparent);
+
+            if (hasUnreadUpdate) {
+              cardColor = isDark ? Colors.red[900]!.withOpacity(0.3) : Colors.red[50]!;
+              borderSide = BorderSide(color: isDark ? Colors.red[700]! : Colors.red[300]!, width: 2);
             }
 
             return Card(
-              elevation: 1,
-              color: Theme.of(context).cardColor,
+              elevation: hasUnreadUpdate ? 3 : 1,
+              color: cardColor,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: isDark ? Colors.grey[800]! : Colors.transparent)
+                side: borderSide,
               ),
               margin: const EdgeInsets.only(bottom: 12.0),
               child: InkWell(
                 borderRadius: BorderRadius.circular(12),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => OrderDetailsScreen(orderId: doc.id, orderData: data),
-                    ),
-                  );
+                onTap: () async {
+                  // Если заказ был непрочитанным, снимаем этот флаг в базе при входе в заказ
+                  if (hasUnreadUpdate) {
+                    await FirebaseFirestore.instance.collection('orders').doc(doc.id).update({
+                      'has_unread_update': false,
+                    });
+                  }
+
+                  if (context.mounted) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => OrderDetailsScreen(orderId: doc.id, orderData: data),
+                      ),
+                    );
+                  }
                 },
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
@@ -156,7 +185,18 @@ class _OrdersScreenState extends State<OrdersScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start, 
                           children: [
-                            Text(clientName, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : Colors.black87)),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(child: Text(clientName, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : Colors.black87))),
+                                if (hasUnreadUpdate)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)),
+                                    child: const Text('НОВОЕ', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
+                                  )
+                              ],
+                            ),
                             const SizedBox(height: 4),
                             Text(deviceType, style: TextStyle(color: isDark ? Colors.grey[300] : Colors.blueGrey[800], fontWeight: FontWeight.w600)),
                             const SizedBox(height: 4),
@@ -169,6 +209,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                           ],
                         ),
                       ),
+                      const SizedBox(width: 8),
                       const Icon(Icons.chevron_right, color: Colors.blueGrey),
                     ],
                   ),
@@ -253,4 +294,3 @@ class _OrdersScreenState extends State<OrdersScreen> {
     );
   }
 }
-
