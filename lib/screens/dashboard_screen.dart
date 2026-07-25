@@ -13,6 +13,7 @@ import 'settings_screen.dart';
 import 'chat_lists_screen.dart'; 
 import 'statistics_screen.dart';
 import 'tasks_screen.dart'; 
+import 'bulk_push_screen.dart'; // <--- ПОДКЛЮЧИЛИ ЭКРАН РАССЫЛОК
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -132,7 +133,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   title: Text('Создать рассылку', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
                   onTap: () {
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('В разработке: Маркетинговые Push-рассылки')));
+                    // --- ПЕРЕХОД НА МАССОВУЮ РАССЫЛКУ ---
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const BulkPushScreen()));
                   },
                 ),
                 ListTile(
@@ -530,3 +532,4 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
+
