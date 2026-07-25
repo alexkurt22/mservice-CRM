@@ -14,7 +14,8 @@ import 'chat_lists_screen.dart';
 import 'statistics_screen.dart';
 import 'tasks_screen.dart'; 
 import 'bulk_push_screen.dart'; 
-import 'admin_notes_screen.dart'; // <--- ПОДКЛЮЧИЛИ ЗАМЕТКИ АДМИНИСТРАТОРА
+import 'admin_notes_screen.dart';
+import 'content_manager_screen.dart'; // <--- ПОДКЛЮЧИЛИ КОНТЕНТ-МЕНЕДЖЕР
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -137,8 +138,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     Navigator.push(context, MaterialPageRoute(builder: (_) => const BulkPushScreen()));
                   },
                 ),
-                
-                // --- БЛОК: ЗАМЕТКИ АДМИНИСТРАТОРА (БАЗА ЗНАНИЙ) ---
                 ListTile(
                   leading: Icon(Icons.edit_note, color: isDark ? Colors.white70 : Colors.blueGrey[700]),
                   title: Text('Заметки администратора', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
@@ -148,6 +147,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   },
                 ),
                 
+                // --- НОВАЯ КНОПКА: КОНТЕНТ И НОВОСТИ ---
+                ListTile(
+                  leading: Icon(Icons.dynamic_feed, color: isDark ? Colors.pink[300] : Colors.pink[600]),
+                  title: Text('Контент и Новости', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const ContentManagerScreen()));
+                  },
+                ),
+
                 ListTile(
                   leading: Icon(Icons.settings, color: isDark ? Colors.white70 : Colors.blueGrey[700]),
                   title: Text('Настройки', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
@@ -252,7 +261,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         foregroundColor: Colors.white,
         title: const Text('Сводка CRM', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         elevation: 0,
-        // --- БЛОК 1: Индикатор на гамбургере (отмененные заказы) ---
+        // --- ИНДИКАТОР НА ГАМБУРГЕРЕ ---
         leading: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'canceled').snapshots(),
           builder: (context, snapshot) {
@@ -277,7 +286,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           },
         ),
         actions: [
-          // --- БЛОК 2: Индикатор Колокольчика (Задачи и Напоминания) ---
+          // --- ИНДИКАТОР КОЛОКОЛЬЧИКА ---
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('tasks').where('is_completed', isEqualTo: false).snapshots(),
             builder: (context, snapshot) {
@@ -535,3 +544,4 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
+
