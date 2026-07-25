@@ -119,7 +119,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   void _showDelegationSheet() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final String orderText = '''
-🛠 НОВЫЙ ЗАКАЗ #${widget.orderId.substring(0, 5).toUpperCase()}
+🛍 НОВЫЙ ЗАКАЗ #${widget.orderId.substring(0, 5).toUpperCase()}
 📱 Устройство: ${widget.orderData['device_type'] ?? 'Не указано'}
 ⚠️ Проблема: ${widget.orderData['problem'] ?? 'Не указана'}
 👤 Клиент: ${widget.orderData['client_name'] ?? 'Без имени'}
@@ -224,34 +224,51 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     );
   }
 
+  // --- ЛОГИКА НАЗНАЧЕНИЯ МАСТЕРА С ПУШАМИ И ЧАТОМ ---
   Future<void> _assignOrderToMaster(String empPhone, String empName, String orderText) async {
     setState(() => _isLoading = true);
     try {
+      // 1. Обновляем сам заказ
       await FirebaseFirestore.instance.collection('orders').doc(widget.orderId).update({
         'assigned_to': empPhone,
         'assigned_name': empName,
       });
 
+      // 2. Формируем комнату чата (ТИП TEAM)
       final prefs = await SharedPreferences.getInstance();
       final myPhone = prefs.getString('employee_phone') ?? 'admin';
       List<String> parts = [myPhone, empPhone];
       parts.sort();
-      String roomId = 'private_${parts[0]}_${parts[1]}';
+      String roomId = 'team_${parts[0]}_${parts[1]}'; // Обязательно префикс team_ для сотрудников
 
       final chatRef = FirebaseFirestore.instance.collection('chat_rooms').doc(roomId);
       await chatRef.set({
-        'type': 'private',
+        'type': 'team', // Чтобы бейдж падал в нужную кнопку на Дашборде
         'participants': parts,
         'updated_at': FieldValue.serverTimestamp(),
         'last_message': 'Отправлен новый заказ',
         'last_sender': myPhone,
+        'unread_count': FieldValue.increment(1), // Увеличиваем счетчик непрочитанных!
       }, SetOptions(merge: true));
 
+      // 3. Отправляем текст в саму переписку
       await chatRef.collection('messages').add({
         'text': 'Поступил новый заказ на ремонт:\n\n$orderText',
-        'sender_id': myPhone,
+        'sender_phone': myPhone, // Строго sender_phone, чтобы чат не крашился
         'created_at': FieldValue.serverTimestamp(),
+        'is_read': false, // Ставим статус непрочитанного
       });
+
+      // 4. ОТПРАВКА PUSH-УВЕДОМЛЕНИЯ СОТРУДНИКУ
+      final empDoc = await FirebaseFirestore.instance.collection('employees').doc(empPhone).get();
+      if (empDoc.exists && empDoc.data()?['fcm_token'] != null) {
+        await FCMService.sendPushNotification(
+          empDoc.data()!['fcm_token'], 
+          'Новый заказ!', 
+          'Вам назначен новый заказ на ремонт. Проверьте чат!',
+          'chat'
+        );
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Заказ успешно назначен мастеру $empName!'), backgroundColor: Colors.green));
@@ -1181,4 +1198,3 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     );
   }
 }
-
