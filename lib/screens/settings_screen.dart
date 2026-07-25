@@ -318,16 +318,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 Divider(color: isDark ? Colors.grey[800] : Colors.grey[300], height: 32),
 
-                _buildSectionHeader('СИСТЕМА', isDark),
-                ListTile(
-                  leading: Icon(Icons.info_outline, color: isDark ? Colors.white54 : Colors.blueGrey), 
-                  title: Text('О приложении', style: TextStyle(color: isDark ? Colors.white : Colors.black87)), 
-                  subtitle: Text('Версия 1.0.0', style: TextStyle(color: isDark ? Colors.white54 : Colors.grey[600])), 
-                  onTap: () {}
-                ),
                 ListTile(
                   leading: Icon(Icons.logout, color: isDark ? Colors.red[300] : Colors.red),
-                  title: Text('Выйти', style: TextStyle(color: isDark ? Colors.red[300] : Colors.red, fontWeight: FontWeight.bold)),
+                  title: Text('Выйти из аккаунта', style: TextStyle(color: isDark ? Colors.red[300] : Colors.red, fontWeight: FontWeight.bold)),
                   onTap: _showLogoutDialog, // ВАЖНО: Вызов окна безопасности
                 ),
                 const SizedBox(height: 32),
@@ -336,3 +329,4 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
+
