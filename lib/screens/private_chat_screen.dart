@@ -70,7 +70,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
       if (targetPhone.isNotEmpty) {
         if (widget.roomId.contains('team_')) {
-          // Отправка Коллеге (ИСПРАВЛЕНО: передаем ровно 3 аргумента)
+          // Отправка Коллеге
           final empDoc = await FirebaseFirestore.instance.collection('employees').doc(targetPhone).get();
           if (empDoc.exists && empDoc.data()?['fcm_token'] != null) {
             await PushService.sendPushToToken(
@@ -80,7 +80,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
             );
           }
         } else {
-          // Отправка Клиенту (ИСПРАВЛЕНО: передаем ровно 3 аргумента)
+          // Отправка Клиенту
           final clientDoc = await FirebaseFirestore.instance.collection('clients').doc(targetPhone).get();
           if (clientDoc.exists && clientDoc.data()?['fcm_token'] != null) {
             await PushService.sendPushToToken(
@@ -215,14 +215,27 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                       children: [
                         if (showDate && !_isSearching) 
                           Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: isDark ? Colors.grey[800] : Colors.blueGrey[50],
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(_getFriendlyDate(dt), style: TextStyle(color: isDark ? Colors.white70 : Colors.blueGrey[700], fontSize: 11, fontWeight: FontWeight.bold)),
+                            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                            child: Row(
+                              children: [
+                                // Линия слева
+                                Expanded(child: Divider(color: isDark ? Colors.grey[800] : Colors.grey[300], thickness: 1)),
+                                // Плашка с датой
+                                Container(
+                                  margin: const EdgeInsets.symmetric(horizontal: 12),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: isDark ? Colors.grey[800] : Colors.blueGrey[50],
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    _getFriendlyDate(dt), 
+                                    style: TextStyle(color: isDark ? Colors.white70 : Colors.blueGrey[700], fontSize: 11, fontWeight: FontWeight.bold)
+                                  ),
+                                ),
+                                // Линия справа
+                                Expanded(child: Divider(color: isDark ? Colors.grey[800] : Colors.grey[300], thickness: 1)),
+                              ],
                             ),
                           ),
                         
