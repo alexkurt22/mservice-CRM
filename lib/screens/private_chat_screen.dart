@@ -70,25 +70,23 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
       if (targetPhone.isNotEmpty) {
         if (widget.roomId.contains('team_')) {
-          // Отправка Коллеге
+          // Отправка Коллеге (ИСПРАВЛЕНО: передаем ровно 3 аргумента)
           final empDoc = await FirebaseFirestore.instance.collection('employees').doc(targetPhone).get();
           if (empDoc.exists && empDoc.data()?['fcm_token'] != null) {
             await PushService.sendPushToToken(
               empDoc.data()!['fcm_token'], 
               'Новое сообщение от коллеги', 
-              text,
-              'chat'
+              text
             );
           }
         } else {
-          // Отправка Клиенту
+          // Отправка Клиенту (ИСПРАВЛЕНО: передаем ровно 3 аргумента)
           final clientDoc = await FirebaseFirestore.instance.collection('clients').doc(targetPhone).get();
           if (clientDoc.exists && clientDoc.data()?['fcm_token'] != null) {
             await PushService.sendPushToToken(
               clientDoc.data()!['fcm_token'], 
               'Ответ от мастера', 
-              text,
-              'chat'
+              text
             );
           }
         }
