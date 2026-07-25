@@ -13,7 +13,8 @@ import 'settings_screen.dart';
 import 'chat_lists_screen.dart'; 
 import 'statistics_screen.dart';
 import 'tasks_screen.dart'; 
-import 'bulk_push_screen.dart'; // <--- ПОДКЛЮЧИЛИ ЭКРАН РАССЫЛОК
+import 'bulk_push_screen.dart'; 
+import 'admin_notes_screen.dart'; // <--- ПОДКЛЮЧИЛИ ЗАМЕТКИ АДМИНИСТРАТОРА
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -133,18 +134,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   title: Text('Создать рассылку', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
                   onTap: () {
                     Navigator.pop(context);
-                    // --- ПЕРЕХОД НА МАССОВУЮ РАССЫЛКУ ---
                     Navigator.push(context, MaterialPageRoute(builder: (_) => const BulkPushScreen()));
                   },
                 ),
+                
+                // --- БЛОК: ЗАМЕТКИ АДМИНИСТРАТОРА (БАЗА ЗНАНИЙ) ---
                 ListTile(
                   leading: Icon(Icons.edit_note, color: isDark ? Colors.white70 : Colors.blueGrey[700]),
                   title: Text('Заметки администратора', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
                   onTap: () {
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('В разработке: Дневник администратора')));
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminNotesScreen()));
                   },
                 ),
+                
                 ListTile(
                   leading: Icon(Icons.settings, color: isDark ? Colors.white70 : Colors.blueGrey[700]),
                   title: Text('Настройки', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
@@ -532,4 +535,3 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
-
