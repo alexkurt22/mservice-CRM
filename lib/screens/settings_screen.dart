@@ -105,18 +105,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Widget _buildSectionHeader(String title) {
+  // --- ДИАЛОГ БЕЗОПАСНОГО ВЫХОДА ---
+  Future<void> _showLogoutDialog() async {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        title: Text('Выход из аккаунта', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+        content: Text('Вы уверены, что хотите выйти из CRM? Вам потребуется заново ввести номер телефона.', style: TextStyle(color: isDark ? Colors.white70 : Colors.blueGrey[700])),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red[700]),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Выйти', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('employee_phone');
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
+      }
+    }
+  }
+
+  Widget _buildSectionHeader(String title, bool isDark) {
     return Padding(
       padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
-      child: Text(title, style: TextStyle(color: Colors.blueGrey[600], fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 1.2)),
+      child: Text(title, style: TextStyle(color: isDark ? Colors.grey[500] : Colors.blueGrey[600], fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 1.2)),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.blueGrey[900],
+        backgroundColor: isDark ? Colors.grey[900] : Colors.blueGrey[900],
         foregroundColor: Colors.white,
         title: const Text('Настройки', style: TextStyle(fontWeight: FontWeight.bold)),
       ),
@@ -125,69 +161,72 @@ class _SettingsScreenState extends State<SettingsScreen> {
           : ListView(
               padding: const EdgeInsets.all(16.0),
               children: [
-                _buildSectionHeader('КОМАНДА'),
+                _buildSectionHeader('КОМАНДА', isDark),
                 ListTile(
-                  leading: const Icon(Icons.people_alt, color: Colors.blueGrey),
-                  title: const Text('Сотрудники и доступы'),
-                  subtitle: const Text('Модерация заявок и роли'),
+                  leading: Icon(Icons.people_alt, color: isDark ? Colors.white54 : Colors.blueGrey),
+                  title: Text('Сотрудники и доступы', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
+                  subtitle: Text('Модерация заявок и роли', style: TextStyle(color: isDark ? Colors.white54 : Colors.grey[600])),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                   onTap: () {
                     Navigator.push(context, MaterialPageRoute(builder: (_) => const EmployeesManagementScreen()));
                   },
                 ),
-                const Divider(),
+                Divider(color: isDark ? Colors.grey[800] : Colors.grey[300]),
 
-                _buildSectionHeader('КОНТЕНТ И БАЗА'),
+                _buildSectionHeader('КОНТЕНТ И БАЗА', isDark),
                 ListTile(
-                  leading: const Icon(Icons.category, color: Colors.blueGrey),
-                  title: const Text('Категории устройств'),
-                  subtitle: const Text('Управление выпадающим списком'),
+                  leading: Icon(Icons.category, color: isDark ? Colors.white54 : Colors.blueGrey),
+                  title: Text('Категории устройств', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
+                  subtitle: Text('Управление выпадающим списком', style: TextStyle(color: isDark ? Colors.white54 : Colors.grey[600])),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                   onTap: () {
                     Navigator.push(context, MaterialPageRoute(builder: (_) => const CategoriesManagementScreen()));
                   },
                 ),
-                const Divider(),
+                Divider(color: isDark ? Colors.grey[800] : Colors.grey[300]),
 
                 ListTile(
-                  leading: const Icon(Icons.forum, color: Colors.blueGrey),
-                  title: const Text('Модерация отзывов'),
-                  subtitle: const Text('Проверка и публикация оценок клиентов'),
+                  leading: Icon(Icons.forum, color: isDark ? Colors.white54 : Colors.blueGrey),
+                  title: Text('Модерация отзывов', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
+                  subtitle: Text('Проверка и публикация оценок клиентов', style: TextStyle(color: isDark ? Colors.white54 : Colors.grey[600])),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                   onTap: () {
                     Navigator.push(context, MaterialPageRoute(builder: (_) => const ReviewsManagementScreen()));
                   },
                 ),
-                const Divider(),
+                Divider(color: isDark ? Colors.grey[800] : Colors.grey[300]),
 
-                // --- ЦЕНТР УПРАВЛЕНИЯ УВЕДОМЛЕНИЯМИ ---
-                _buildSectionHeader('УПРАВЛЕНИЕ УВЕДОМЛЕНИЯМИ'),
+                _buildSectionHeader('УПРАВЛЕНИЕ УВЕДОМЛЕНИЯМИ', isDark),
                 Card(
+                  color: Theme.of(context).cardColor,
                   elevation: 1,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(color: isDark ? Colors.grey[800]! : Colors.transparent)
+                  ),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8.0),
                     child: Column(
                       children: [
                         SwitchListTile(
-                          title: const Text('Согласование ремонта', style: TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: const Text('Отправка цен и вариантов клиенту'),
+                          title: Text('Согласование ремонта', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                          subtitle: Text('Отправка цен и вариантов клиенту', style: TextStyle(color: isDark ? Colors.white54 : Colors.grey[600])),
                           activeColor: Colors.orange,
                           value: _pushOnNegotiation,
                           onChanged: (val) => setState(() => _pushOnNegotiation = val),
                         ),
-                        const Divider(indent: 16, endIndent: 16),
+                        Divider(indent: 16, endIndent: 16, color: isDark ? Colors.grey[800] : Colors.grey[300]),
                         SwitchListTile(
-                          title: const Text('Начисление баллов', style: TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: const Text('Уведомление при раздаче подарков'),
+                          title: Text('Начисление баллов', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                          subtitle: Text('Уведомление при раздаче подарков', style: TextStyle(color: isDark ? Colors.white54 : Colors.grey[600])),
                           activeColor: Colors.orange,
                           value: _pushOnBonus,
                           onChanged: (val) => setState(() => _pushOnBonus = val),
                         ),
-                        const Divider(indent: 16, endIndent: 16),
+                        Divider(indent: 16, endIndent: 16, color: isDark ? Colors.grey[800] : Colors.grey[300]),
                         SwitchListTile(
-                          title: const Text('Чат поддержки', style: TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: const Text('Новые сообщения от администратора'),
+                          title: Text('Чат поддержки', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                          subtitle: Text('Новые сообщения от администратора', style: TextStyle(color: isDark ? Colors.white54 : Colors.grey[600])),
                           activeColor: Colors.orange,
                           value: _pushOnChat,
                           onChanged: (val) => setState(() => _pushOnChat = val),
@@ -196,19 +235,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                 ),
-                const Divider(),
+                Divider(color: isDark ? Colors.grey[800] : Colors.grey[300]),
 
-                _buildSectionHeader('СИСТЕМА ЛОЯЛЬНОСТИ'),
+                _buildSectionHeader('СИСТЕМА ЛОЯЛЬНОСТИ', isDark),
                 Card(
                   elevation: 1,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  color: Colors.orange[50],
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(color: isDark ? Colors.orange[900]! : Colors.transparent)
+                  ),
+                  color: isDark ? Colors.orange[900]?.withOpacity(0.2) : Colors.orange[50],
                   child: ListTile(
                     contentPadding: const EdgeInsets.all(12),
-                    leading: CircleAvatar(backgroundColor: Colors.orange[200], child: const Icon(Icons.card_giftcard, color: Colors.deepOrange)),
-                    title: const Text('Рассылка баллов клиентам', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    subtitle: const Text('Индивидуально или массово'),
-                    trailing: const Icon(Icons.arrow_forward_ios, color: Colors.orange),
+                    leading: CircleAvatar(backgroundColor: isDark ? Colors.orange[900] : Colors.orange[200], child: Icon(Icons.card_giftcard, color: isDark ? Colors.white : Colors.deepOrange)),
+                    title: Text('Рассылка баллов клиентам', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.orange[300] : Colors.black87)),
+                    subtitle: Text('Индивидуально или массово', style: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700])),
+                    trailing: Icon(Icons.arrow_forward_ios, color: isDark ? Colors.orange[300] : Colors.orange),
                     onTap: () {
                       Navigator.push(context, MaterialPageRoute(builder: (_) => const BonusDistributionScreen()));
                     },
@@ -218,24 +260,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 
                 Card(
                   elevation: 1,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  color: Theme.of(context).cardColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(color: isDark ? Colors.grey[800]! : Colors.transparent)
+                  ),
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Автоматические правила', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text('Автоматические правила', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : Colors.black87)),
                         const SizedBox(height: 16),
                         TextField(
                           controller: _welcomeController,
                           keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: 'Бонус за регистрацию', prefixIcon: Icon(Icons.person_add, color: Colors.green), border: OutlineInputBorder()),
+                          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                          decoration: InputDecoration(
+                            labelText: 'Бонус за регистрацию',
+                            labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
+                            prefixIcon: const Icon(Icons.person_add, color: Colors.green), 
+                            border: const OutlineInputBorder(),
+                            enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey)),
+                          ),
                         ),
                         const SizedBox(height: 16),
                         TextField(
                           controller: _discountController,
                           keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: 'Макс. % оплаты баллами', prefixIcon: Icon(Icons.percent, color: Colors.blue), border: OutlineInputBorder()),
+                          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                          decoration: InputDecoration(
+                            labelText: 'Макс. % оплаты баллами',
+                            labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
+                            prefixIcon: const Icon(Icons.percent, color: Colors.blue), 
+                            border: const OutlineInputBorder(),
+                            enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey)),
+                          ),
                         ),
                       ],
                     ),
@@ -247,41 +307,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey[900], shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isDark ? Colors.blueGrey[700] : Colors.blueGrey[900], 
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                    ),
                     onPressed: _isSaving ? null : _saveAllSettings,
                     icon: _isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.save, color: Colors.white),
                     label: Text(_isSaving ? 'Сохранение...' : 'СОХРАНИТЬ ВСЕ НАСТРОЙКИ', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
                 ),
-                const Divider(),
+                Divider(color: isDark ? Colors.grey[800] : Colors.grey[300], height: 32),
 
-                _buildSectionHeader('ОСНОВНЫЕ'),
-                SwitchListTile(
-                  title: const Text('Темная тема'),
-                  subtitle: const Text('В разработке'),
-                  value: false,
-                  onChanged: (bool value) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Функция будет доступна в обновлениях')));
-                  },
-                ),
-                const Divider(),
-                
-                _buildSectionHeader('АККАУНТ'),
-                ListTile(leading: const Icon(Icons.admin_panel_settings), title: const Text('Данные администратора'), onTap: () {}),
-                const Divider(),
-                
-                _buildSectionHeader('СИСТЕМА'),
-                ListTile(leading: const Icon(Icons.info_outline), title: const Text('О приложении'), subtitle: const Text('Версия 1.0.0'), onTap: () {}),
+                _buildSectionHeader('СИСТЕМА', isDark),
                 ListTile(
-                  leading: const Icon(Icons.logout, color: Colors.red),
-                  title: const Text('Выйти', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                  onTap: () async {
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.remove('employee_phone');
-                    if (context.mounted) {
-                      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
-                    }
-                  },
+                  leading: Icon(Icons.info_outline, color: isDark ? Colors.white54 : Colors.blueGrey), 
+                  title: Text('О приложении', style: TextStyle(color: isDark ? Colors.white : Colors.black87)), 
+                  subtitle: Text('Версия 1.0.0', style: TextStyle(color: isDark ? Colors.white54 : Colors.grey[600])), 
+                  onTap: () {}
+                ),
+                ListTile(
+                  leading: Icon(Icons.logout, color: isDark ? Colors.red[300] : Colors.red),
+                  title: Text('Выйти', style: TextStyle(color: isDark ? Colors.red[300] : Colors.red, fontWeight: FontWeight.bold)),
+                  onTap: _showLogoutDialog, // ВАЖНО: Вызов окна безопасности
                 ),
                 const SizedBox(height: 32),
               ],
@@ -289,4 +336,3 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
-
