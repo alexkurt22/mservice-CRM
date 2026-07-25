@@ -275,9 +275,14 @@ class _BulkPushScreenState extends State<BulkPushScreen> {
             ),
           ),
 
-          // --- КНОПКА ОТПРАВКИ ---
+          // --- КНОПКА ОТПРАВКИ С УМНЫМ ОТСТУПОМ ---
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.only(
+              left: 16, 
+              right: 16, 
+              top: 16, 
+              bottom: MediaQuery.of(context).padding.bottom + 16 // <-- УМНЫЙ ОТСТУП ЗДЕСЬ
+            ),
             decoration: BoxDecoration(
               color: Theme.of(context).cardColor,
               boxShadow: [BoxShadow(color: Colors.black.withOpacity(isDark ? 0.3 : 0.05), blurRadius: 4, offset: const Offset(0, -2))],
