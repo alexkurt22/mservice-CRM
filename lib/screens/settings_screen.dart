@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'categories_management_screen.dart'; 
+import 'catalog_editor_screen.dart'; // <--- ПОДКЛЮЧИЛИ ПРАЙС-ЛИСТ
 import 'login_screen.dart'; 
 import 'employees_management_screen.dart'; 
 import 'bonus_distribution_screen.dart';
@@ -177,10 +178,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ListTile(
                   leading: Icon(Icons.category, color: isDark ? Colors.white54 : Colors.blueGrey),
                   title: Text('Категории устройств', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
-                  subtitle: Text('Управление выпадающим списком', style: TextStyle(color: isDark ? Colors.white54 : Colors.grey[600])),
+                  subtitle: Text('Смартфон, Ноутбук и т.д.', style: TextStyle(color: isDark ? Colors.white54 : Colors.grey[600])),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                   onTap: () {
                     Navigator.push(context, MaterialPageRoute(builder: (_) => const CategoriesManagementScreen()));
+                  },
+                ),
+                Divider(color: isDark ? Colors.grey[800] : Colors.grey[300]),
+
+                // --- НОВАЯ КНОПКА КАТАЛОГА УСЛУГ ---
+                ListTile(
+                  leading: Icon(Icons.monetization_on, color: isDark ? Colors.white54 : Colors.blueGrey),
+                  title: Text('Прайс-лист услуг', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
+                  subtitle: Text('Редактирование цен на услуги', style: TextStyle(color: isDark ? Colors.white54 : Colors.grey[600])),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const CatalogEditorScreen()));
                   },
                 ),
                 Divider(color: isDark ? Colors.grey[800] : Colors.grey[300]),
@@ -318,10 +331,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 Divider(color: isDark ? Colors.grey[800] : Colors.grey[300], height: 32),
 
+                // Блок с Системой полностью убран, остался только Выход
                 ListTile(
                   leading: Icon(Icons.logout, color: isDark ? Colors.red[300] : Colors.red),
                   title: Text('Выйти из аккаунта', style: TextStyle(color: isDark ? Colors.red[300] : Colors.red, fontWeight: FontWeight.bold)),
-                  onTap: _showLogoutDialog, // ВАЖНО: Вызов окна безопасности
+                  onTap: _showLogoutDialog,
                 ),
                 const SizedBox(height: 32),
               ],
@@ -329,4 +343,3 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
-
