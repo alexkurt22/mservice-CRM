@@ -2,14 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'categories_management_screen.dart'; 
-import 'catalog_editor_screen.dart'; // <--- ПОДКЛЮЧИЛИ ПРАЙС-ЛИСТ
+import 'catalog_editor_screen.dart'; 
 import 'login_screen.dart'; 
 import 'employees_management_screen.dart'; 
 import 'bonus_distribution_screen.dart';
 import 'reviews_management_screen.dart'; 
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  final Function(bool) onThemeChanged; // Передача колбэка для смены темы
+  final bool isDarkMode;
+
+  const SettingsScreen({
+    super.key, 
+    required this.onThemeChanged,
+    required this.isDarkMode,
+  });
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -19,7 +26,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _welcomeController = TextEditingController();
   final TextEditingController _discountController = TextEditingController();
 
-  // Состояние галочек для пушей
   bool _pushOnNegotiation = true;
   bool _pushOnBonus = true;
   bool _pushOnChat = true;
@@ -106,7 +112,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // --- ДИАЛОГ БЕЗОПАСНОГО ВЫХОДА ---
   Future<void> _showLogoutDialog() async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -162,6 +167,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
           : ListView(
               padding: const EdgeInsets.all(16.0),
               children: [
+                _buildSectionHeader('ИНТЕРФЕЙС', isDark),
+                Card(
+                  color: Theme.of(context).cardColor,
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(color: isDark ? Colors.grey[800]! : Colors.transparent)
+                  ),
+                  child: SwitchListTile(
+                    secondary: Icon(widget.isDarkMode ? Icons.dark_mode : Icons.light_mode, color: widget.isDarkMode ? Colors.amber : Colors.blue),
+                    title: Text('Тёмная тема', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                    subtitle: Text('Комфортная работа в темное время', style: TextStyle(color: isDark ? Colors.white54 : Colors.grey[600])),
+                    activeColor: Colors.orange,
+                    value: widget.isDarkMode,
+                    onChanged: (val) {
+                      widget.onThemeChanged(val); // Вызываем сохранение и смену темы
+                    },
+                  ),
+                ),
+                Divider(color: isDark ? Colors.grey[800] : Colors.grey[300]),
+
                 _buildSectionHeader('КОМАНДА', isDark),
                 ListTile(
                   leading: Icon(Icons.people_alt, color: isDark ? Colors.white54 : Colors.blueGrey),
@@ -186,7 +212,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 Divider(color: isDark ? Colors.grey[800] : Colors.grey[300]),
 
-                // --- НОВАЯ КНОПКА КАТАЛОГА УСЛУГ ---
                 ListTile(
                   leading: Icon(Icons.monetization_on, color: isDark ? Colors.white54 : Colors.blueGrey),
                   title: Text('Прайс-лист услуг', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
@@ -331,7 +356,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 Divider(color: isDark ? Colors.grey[800] : Colors.grey[300], height: 32),
 
-                // Блок с Системой полностью убран, остался только Выход
                 ListTile(
                   leading: Icon(Icons.logout, color: isDark ? Colors.red[300] : Colors.red),
                   title: Text('Выйти из аккаунта', style: TextStyle(color: isDark ? Colors.red[300] : Colors.red, fontWeight: FontWeight.bold)),
