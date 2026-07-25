@@ -12,6 +12,7 @@ import 'database_cleanup_screen.dart';
 import 'settings_screen.dart';
 import 'chat_lists_screen.dart'; 
 import 'statistics_screen.dart';
+import 'tasks_screen.dart'; 
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -87,7 +88,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Text('ИНСТРУМЕНТЫ', style: TextStyle(color: isDark ? Colors.grey[500] : Colors.blueGrey[400], fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.2)),
                 ),
                 
-                // --- НОВЫЙ БЛОК: ОТМЕНЕННЫЕ ЗАКАЗЫ (С БЕЙДЖЕМ) ---
+                // --- БЛОК: ОТМЕНЕННЫЕ ЗАКАЗЫ (С БЕЙДЖЕМ) ---
                 StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'canceled').snapshots(),
                   builder: (context, snapshot) {
@@ -246,7 +247,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         foregroundColor: Colors.white,
         title: const Text('Сводка CRM', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         elevation: 0,
-        // --- НОВЫЙ БЛОК: ИНДИКАТОР НА ГАМБУРГЕРЕ ---
+        // --- БЛОК 1: Индикатор на гамбургере (отмененные заказы) ---
         leading: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'canceled').snapshots(),
           builder: (context, snapshot) {
@@ -270,6 +271,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
             );
           },
         ),
+        actions: [
+          // --- БЛОК 2: Индикатор Колокольчика (Задачи и Напоминания) ---
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance.collection('tasks').where('is_completed', isEqualTo: false).snapshots(),
+            builder: (context, snapshot) {
+              int urgentTasks = 0;
+              if (snapshot.hasData) {
+                final now = DateTime.now();
+                final today = DateTime(now.year, now.month, now.day);
+                
+                urgentTasks = snapshot.data!.docs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final date = (data['due_date'] as Timestamp?)?.toDate();
+                  if (date == null) return false;
+                  final taskDate = DateTime(date.year, date.month, date.day);
+                  return taskDate.difference(today).inDays <= 0;
+                }).length;
+              }
+
+              return IconButton(
+                icon: Badge(
+                  isLabelVisible: urgentTasks > 0,
+                  label: Text('$urgentTasks', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  backgroundColor: Colors.red,
+                  child: const Icon(Icons.notifications),
+                ),
+                tooltip: 'Задачи и Напоминания',
+                onPressed: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const TasksScreen()));
+                },
+              );
+            },
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       drawer: _buildDrawer(context, isDark), 
       
