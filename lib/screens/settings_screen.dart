@@ -3,20 +3,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'categories_management_screen.dart'; 
 import 'catalog_editor_screen.dart'; 
+import 'content_manager_screen.dart';
 import 'login_screen.dart'; 
 import 'employees_management_screen.dart'; 
 import 'bonus_distribution_screen.dart';
 import 'reviews_management_screen.dart'; 
 
 class SettingsScreen extends StatefulWidget {
-  final Function(bool) onThemeChanged; // Передача колбэка для смены темы
-  final bool isDarkMode;
-
-  const SettingsScreen({
-    super.key, 
-    required this.onThemeChanged,
-    required this.isDarkMode,
-  });
+  const SettingsScreen({super.key});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -29,6 +23,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _pushOnNegotiation = true;
   bool _pushOnBonus = true;
   bool _pushOnChat = true;
+  bool _isDarkMode = false;
 
   bool _isLoading = true;
   bool _isSaving = false;
@@ -47,6 +42,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    _isDarkMode = prefs.getBool('is_dark_mode') ?? false;
+
     try {
       final loyaltyDoc = await FirebaseFirestore.instance.collection('settings').doc('loyalty').get();
       if (loyaltyDoc.exists && loyaltyDoc.data() != null) {
@@ -71,6 +69,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка загрузки: $e')));
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _toggleTheme(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('is_dark_mode', value);
+    setState(() {
+      _isDarkMode = value;
+    });
+    // Подсказка для пользователя
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Тема изменена. Перезапустите приложение, чтобы применить ко всем экранам.'),
+          duration: Duration(seconds: 3),
+        )
+      );
     }
   }
 
@@ -176,13 +191,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     side: BorderSide(color: isDark ? Colors.grey[800]! : Colors.transparent)
                   ),
                   child: SwitchListTile(
-                    secondary: Icon(widget.isDarkMode ? Icons.dark_mode : Icons.light_mode, color: widget.isDarkMode ? Colors.amber : Colors.blue),
+                    secondary: Icon(_isDarkMode ? Icons.dark_mode : Icons.light_mode, color: _isDarkMode ? Colors.amber : Colors.blue),
                     title: Text('Тёмная тема', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
-                    subtitle: Text('Комфортная работа в темное время', style: TextStyle(color: isDark ? Colors.white54 : Colors.grey[600])),
+                    subtitle: Text('Применится после перезапуска', style: TextStyle(color: isDark ? Colors.white54 : Colors.grey[600])),
                     activeColor: Colors.orange,
-                    value: widget.isDarkMode,
+                    value: _isDarkMode,
                     onChanged: (val) {
-                      widget.onThemeChanged(val); // Вызываем сохранение и смену темы
+                      _toggleTheme(val); 
                     },
                   ),
                 ),
@@ -219,6 +234,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                   onTap: () {
                     Navigator.push(context, MaterialPageRoute(builder: (_) => const CatalogEditorScreen()));
+                  },
+                ),
+                Divider(color: isDark ? Colors.grey[800] : Colors.grey[300]),
+
+                ListTile(
+                  leading: Icon(Icons.dynamic_feed, color: isDark ? Colors.pink[300] : Colors.pink[600]),
+                  title: Text('Контент и Новости', style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
+                  subtitle: Text('Управление лентой и акциями', style: TextStyle(color: isDark ? Colors.white54 : Colors.grey[600])),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const ContentManagerScreen()));
                   },
                 ),
                 Divider(color: isDark ? Colors.grey[800] : Colors.grey[300]),
