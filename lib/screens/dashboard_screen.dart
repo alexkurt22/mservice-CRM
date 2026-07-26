@@ -9,13 +9,13 @@ import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import 'users_screen.dart';
 import 'orders_screen.dart';
 import 'database_cleanup_screen.dart'; 
-import 'settings_screen.dart';
+import 'settings_screen.dart'; // <--- ОБЫЧНЫЙ ВЫЗОВ НАСТРОЕК
 import 'chat_lists_screen.dart'; 
 import 'statistics_screen.dart';
 import 'tasks_screen.dart'; 
 import 'bulk_push_screen.dart'; 
 import 'admin_notes_screen.dart';
-import 'content_manager_screen.dart'; // <--- ПОДКЛЮЧИЛИ КОНТЕНТ-МЕНЕДЖЕР
+import 'content_manager_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -91,7 +91,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Text('ИНСТРУМЕНТЫ', style: TextStyle(color: isDark ? Colors.grey[500] : Colors.blueGrey[400], fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.2)),
                 ),
                 
-                // --- БЛОК: ОТМЕНЕННЫЕ ЗАКАЗЫ (С БЕЙДЖЕМ) ---
                 StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'canceled').snapshots(),
                   builder: (context, snapshot) {
@@ -147,7 +146,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   },
                 ),
                 
-                // --- НОВАЯ КНОПКА: КОНТЕНТ И НОВОСТИ ---
                 ListTile(
                   leading: Icon(Icons.dynamic_feed, color: isDark ? Colors.pink[300] : Colors.pink[600]),
                   title: Text('Контент и Новости', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
@@ -162,6 +160,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   title: Text('Настройки', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
                   onTap: () {
                     Navigator.pop(context);
+                    // --- ТЕПЕРЬ ОШИБКИ НЕТ, вызываем просто: ---
                     Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
                   },
                 ),
@@ -261,7 +260,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         foregroundColor: Colors.white,
         title: const Text('Сводка CRM', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         elevation: 0,
-        // --- ИНДИКАТОР НА ГАМБУРГЕРЕ ---
         leading: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'canceled').snapshots(),
           builder: (context, snapshot) {
@@ -286,7 +284,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           },
         ),
         actions: [
-          // --- ИНДИКАТОР КОЛОКОЛЬЧИКА ---
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('tasks').where('is_completed', isEqualTo: false).snapshots(),
             builder: (context, snapshot) {
