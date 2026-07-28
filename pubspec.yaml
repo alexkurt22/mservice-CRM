@@ -22,7 +22,9 @@ dependencies:
   firebase_messaging: ^15.2.10
   share_plus: ^10.1.0 
   file_picker: ^8.0.0
-  flutter_ringtone_player: ^4.0.0+4  # ❗ ВЕРНИ ЭТУ СТРОКУ
+  flutter_ringtone_player: ^4.0.0+4
+  just_audio: ^0.9.36 # ДОБАВЛЕНО ДЛЯ ВОСПРОИЗВЕДЕНИЯ АУДИО
+  path_provider: ^2.1.2 # ДОБАВЛЕНО ДЛЯ СОХРАНЕНИЯ ВРЕМЕННЫХ ФАЙЛОВ
 
 dev_dependencies:
   flutter_test:
@@ -33,4 +35,3 @@ flutter:
   uses-material-design: true
   assets:
     - assets/firebase_credentials.json
-    
