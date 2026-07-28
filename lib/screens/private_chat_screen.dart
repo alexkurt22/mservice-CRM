@@ -9,7 +9,6 @@ import 'package:flutter_sound/flutter_sound.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../services/push_service.dart';
 
 class PrivateChatScreen extends StatefulWidget {
@@ -30,30 +29,23 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
-  // --- МЕДИА И ЗАПИСЬ ---
   final ImagePicker _imagePicker = ImagePicker();
   FlutterSoundRecorder? _audioRecorder;
   bool _isRecording = false;
   String? _currentAudioPath;
   
-  // --- ВОСПРОИЗВЕДЕНИЕ ---
   final AudioPlayer _audioPlayer = AudioPlayer();
   String? _currentlyPlayingId;
-
-  // --- ТРАНСКРИБАЦИЯ ---
-  final stt.SpeechToText _speechToText = stt.SpeechToText();
-  String _recognizedText = '';
 
   @override
   void initState() {
     super.initState();
     _getMyPhone();
     _initRecorder();
-    _initSpeechToText();
     
     _audioPlayer.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed) {
-        setState(() => _currentlyPlayingId = null);
+        if (mounted) setState(() => _currentlyPlayingId = null);
         _audioPlayer.stop();
       }
     });
@@ -62,10 +54,6 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   Future<void> _initRecorder() async {
     _audioRecorder = FlutterSoundRecorder();
     await _audioRecorder!.openRecorder();
-  }
-
-  Future<void> _initSpeechToText() async {
-    await _speechToText.initialize();
   }
 
   @override
@@ -79,10 +67,9 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
   Future<void> _getMyPhone() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() => _myPhone = prefs.getString('employee_phone') ?? 'admin');
+    if (mounted) setState(() => _myPhone = prefs.getString('employee_phone') ?? 'admin');
   }
 
-  // --- ОТПРАВКА ТЕКСТА ---
   Future<void> _sendTextMessage() async {
     if (_controller.text.trim().isEmpty) return;
     final text = _controller.text.trim();
@@ -90,7 +77,6 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     await _sendMessageToDb(text: text);
   }
 
-  // --- ОТПРАВКА ФОТО ---
   Future<void> _pickAndSendImage() async {
     try {
       final pickedFile = await _imagePicker.pickImage(source: ImageSource.gallery, imageQuality: 50);
@@ -104,27 +90,18 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     }
   }
 
-  // --- ЗАПИСЬ АУДИО И ТРАНСКРИБАЦИЯ ---
   Future<void> _startRecording() async {
     var statusMicrophone = await Permission.microphone.request();
     if (statusMicrophone != PermissionStatus.granted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Нет разрешения!')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Нет разрешения!')));
       return;
     }
     try {
       final tempDir = await getTemporaryDirectory();
       _currentAudioPath = '${tempDir.path}/chat_audio_${DateTime.now().millisecondsSinceEpoch}.aac';
-      _recognizedText = '';
       
-      if (_speechToText.isAvailable) {
-        _speechToText.listen(
-          onResult: (result) => setState(() => _recognizedText = result.recognizedWords),
-          localeId: 'ru_RU', 
-        );
-      }
-
       await _audioRecorder!.startRecorder(toFile: _currentAudioPath, codec: Codec.aacADTS);
-      setState(() => _isRecording = true);
+      if (mounted) setState(() => _isRecording = true);
     } catch (e) {
       debugPrint('Ошибка записи: $e');
     }
@@ -134,14 +111,12 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     if (!_isRecording) return;
     try {
       await _audioRecorder!.stopRecorder();
-      await _speechToText.stop();
-      setState(() => _isRecording = false);
+      if (mounted) setState(() => _isRecording = false);
 
       if (_currentAudioPath != null) {
         final bytes = await File(_currentAudioPath!).readAsBytes();
         final base64Audio = base64Encode(bytes);
-        String transcription = _recognizedText.isNotEmpty ? _recognizedText : 'Голосовое сообщение';
-        await _sendMessageToDb(text: '🎤 $transcription', audioBase64: base64Audio);
+        await _sendMessageToDb(text: '🎤 Голосовое сообщение', audioBase64: base64Audio);
       }
     } catch (e) {
       debugPrint('Ошибка: $e');
@@ -191,7 +166,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   Future<void> _playAudio(String messageId, String base64Audio) async {
     if (_currentlyPlayingId == messageId) {
       await _audioPlayer.pause();
-      setState(() => _currentlyPlayingId = null);
+      if (mounted) setState(() => _currentlyPlayingId = null);
       return;
     }
     try {
@@ -200,7 +175,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       final file = File('${dir.path}/play_$messageId.aac');
       await file.writeAsBytes(bytes);
       await _audioPlayer.setFilePath(file.path);
-      setState(() => _currentlyPlayingId = messageId);
+      if (mounted) setState(() => _currentlyPlayingId = messageId);
       await _audioPlayer.play();
     } catch (e) {
       debugPrint("Ошибка проигрывания: $e");
@@ -398,3 +373,4 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     );
   }
 }
+
