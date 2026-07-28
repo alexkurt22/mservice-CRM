@@ -23,6 +23,8 @@ class _EmployeesManagementScreenState extends State<EmployeesManagementScreen> {
       await FirebaseFirestore.instance.collection('employees').doc(phoneId).update({
         'is_approved': true,
         'role': role,
+        // По умолчанию новому сотруднику даем базовые права
+        'permissions': ['view_own_orders'] 
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Сотрудник одобрен!'), backgroundColor: Colors.green));
@@ -38,6 +40,20 @@ class _EmployeesManagementScreenState extends State<EmployeesManagementScreen> {
       await FirebaseFirestore.instance.collection('employees').doc(phoneId).delete();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Доступ удален'), backgroundColor: Colors.orange));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red));
+    }
+  }
+
+  // --- НОВОЕ: ОБНОВЛЕНИЕ ПРАВ ДОСТУПА ---
+  Future<void> _updatePermissions(String phoneId, List<dynamic> permissions) async {
+    try {
+      await FirebaseFirestore.instance.collection('employees').doc(phoneId).update({
+        'permissions': permissions,
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Права обновлены!'), backgroundColor: Colors.green));
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red));
@@ -106,6 +122,64 @@ class _EmployeesManagementScreenState extends State<EmployeesManagementScreen> {
     );
   }
 
+  // --- НОВОЕ: ВСПЛЫВАЮЩЕЕ ОКНО НАСТРОЙКИ ПРАВ ---
+  void _showPermissionsDialog(Map<String, dynamic> data, String phoneId) {
+    List<dynamic> currentPermissions = data['permissions'] ?? [];
+    
+    // Вспомогательная функция для чекбоксов
+    Widget buildCheckbox(String key, String title, StateSetter setStateDialog) {
+      return CheckboxListTile(
+        title: Text(title, style: const TextStyle(fontSize: 14)),
+        value: currentPermissions.contains(key),
+        activeColor: Colors.blueGrey[900],
+        onChanged: (bool? value) {
+          setStateDialog(() {
+            if (value == true) {
+              currentPermissions.add(key);
+            } else {
+              currentPermissions.remove(key);
+            }
+          });
+        },
+      );
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setStateDialog) {
+          return AlertDialog(
+            title: Text('Права: ${data['name']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            contentPadding: const EdgeInsets.symmetric(vertical: 16),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  buildCheckbox('view_all_orders', 'Видеть все заказы (чужие)', setStateDialog),
+                  buildCheckbox('view_finance', 'Видеть финансы и статистику', setStateDialog),
+                  buildCheckbox('manage_clients', 'Управлять базой клиентов', setStateDialog),
+                  buildCheckbox('manage_settings', 'Настройки, Услуги и Контент', setStateDialog),
+                  buildCheckbox('send_push', 'Отправлять Push-рассылки', setStateDialog),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена', style: TextStyle(color: Colors.grey))),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey[900], foregroundColor: Colors.white),
+                onPressed: () {
+                  _updatePermissions(phoneId, currentPermissions);
+                  Navigator.pop(ctx);
+                },
+                child: const Text('Сохранить права'),
+              ),
+            ],
+          );
+        }
+      ),
+    );
+  }
+
   // Всплывающее окно для АКТИВНЫХ сотрудников
   void _showEditDialog(Map<String, dynamic> data, String phoneId) {
     String currentRole = data['role'] ?? 'Исполнитель (Мастер)';
@@ -142,8 +216,13 @@ class _EmployeesManagementScreenState extends State<EmployeesManagementScreen> {
                 label: const Text('Уволить'),
               ),
               ElevatedButton(
-                onPressed: () {
-                  _approveEmployee(phoneId, currentRole); // Та же функция просто обновит роль
+                onPressed: () async {
+                   await FirebaseFirestore.instance.collection('employees').doc(phoneId).update({
+                    'role': currentRole,
+                  });
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Должность обновлена'), backgroundColor: Colors.green));
+                  }
                   Navigator.pop(ctx);
                 },
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey[900], foregroundColor: Colors.white),
@@ -187,7 +266,6 @@ class _EmployeesManagementScreenState extends State<EmployeesManagementScreen> {
             }
 
             final docs = snapshot.data!.docs;
-            // Фильтруем на два списка
             final pending = docs.where((d) => (d.data() as Map<String, dynamic>)['is_approved'] == false).toList();
             final active = docs.where((d) => (d.data() as Map<String, dynamic>)['is_approved'] == true).toList();
 
@@ -238,9 +316,21 @@ class _EmployeesManagementScreenState extends State<EmployeesManagementScreen> {
                               leading: CircleAvatar(backgroundColor: Colors.blueGrey[100], child: const Icon(Icons.person, color: Colors.blueGrey)),
                               title: Text(data['name'] ?? 'Без имени', style: const TextStyle(fontWeight: FontWeight.bold)),
                               subtitle: Text('${data['role']} • ${data['phone']}'),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.settings, color: Colors.grey),
-                                onPressed: () => _showEditDialog(data, docId),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // --- НОВАЯ КНОПКА ПРАВ ДОСТУПА ---
+                                  IconButton(
+                                    icon: const Icon(Icons.security, color: Colors.orange),
+                                    tooltip: 'Права доступа',
+                                    onPressed: () => _showPermissionsDialog(data, docId),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.settings, color: Colors.grey),
+                                    tooltip: 'Настройки',
+                                    onPressed: () => _showEditDialog(data, docId),
+                                  ),
+                                ],
                               ),
                             ),
                           );
