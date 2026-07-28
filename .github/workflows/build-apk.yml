@@ -27,7 +27,6 @@ jobs:
       - name: Generate system files
         run: flutter create --platforms=android .
         
-      # --- ДИНАМИЧЕСКИ ДОБАВЛЯЕМ ПРАВА НА СМС, МИКРОФОН И КАМЕРУ ---
       - name: Fix Android Manifest (Permissions & SMS)
         run: |
           cat << 'EOF' > fix_manifest.dart
@@ -51,7 +50,7 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Fix Android SDK versions, kill JNI bug, and replace JCenter
+      - name: Fix Android SDK versions and kill JNI bug
         run: |
           find /home/runner/.pub-cache/hosted -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion 33/compileSdkVersion 36/g' {} +
           find /home/runner/.pub-cache/hosted -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion 34/compileSdkVersion 36/g' {} +
@@ -66,13 +65,9 @@ jobs:
           sed -i 's/targetSdkVersion 33/targetSdkVersion 34/g' android/app/build.gradle 2>/dev/null || true
           sed -i 's/targetSdk = 33/targetSdk = 34/g' android/app/build.gradle.kts 2>/dev/null || true
           
-          # УБИЙЦА БАГА JNI (Надежный метод через Perl, который не ломает скобки)
+          # УБИЙЦА БАГА JNI
           find /home/runner/.pub-cache/hosted -path "*/jni-*/android/build.gradle" -exec perl -0777 -pi -e 's/kotlin\s*\{[^}]*\}//g' {} + || true
 
-          # --- ЛЕЧИМ SPEECH_TO_TEXT: ЗАМЕНЯЕМ УСТАРЕВШИЙ JCENTER НА MAVENCENTRAL ---
-          find /home/runner/.pub-cache/hosted -name "build.gradle" -type f -exec sed -i 's/jcenter()/mavenCentral()/g' {} +
-
-      # --- ИНЪЕКЦИЯ СЕКРЕТОВ И САМОДИАГНОСТИКА КЛЮЧА ---
       - name: Inject Secret Keys and Permanent Keystore
         env:
           FIREBASE_SECRET: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
@@ -81,32 +76,8 @@ jobs:
           mkdir -p assets
           echo "$FIREBASE_SECRET" | base64 -d > assets/firebase_credentials.json
           
-          # 1. Проверка существования секрета
-          if [ -z "$KEYSTORE_SECRET" ]; then
-            echo "🛑 ОШИБКА: Секрет KEYSTORE_BASE64 пустой! Проверь название в настройках."
-            exit 1
-          fi
-          
-          # 2. Бронебойная расшифровка (удаляем перенос строки и мусор)
           echo -n "$KEYSTORE_SECRET" | tr -d '\n\r ' | base64 -d -i > android/app/upload-keystore.jks
           
-          # 3. Защита от обрезанного ключа
-          FILESIZE=$(stat -c%s "android/app/upload-keystore.jks")
-          echo "Размер файла ключа: $FILESIZE байт"
-          if [ "$FILESIZE" -lt 1500 ]; then
-            echo "🛑 ОШИБКА: Файл ключа обрезался ($FILESIZE байт)! Скопируй текст из keystore_base64.txt полностью."
-            exit 1
-          fi
-          
-          # 4. Проверка целостности ключа
-          if ! keytool -list -keystore android/app/upload-keystore.jks -storepass "mservice123"; then
-             echo "🛑 ОШИБКА: Ключ поврежден! Текст был скопирован с ошибкой."
-             exit 1
-          fi
-          
-          echo "✅ КЛЮЧ ИДЕАЛЕН! ПРОДОЛЖАЕМ СБОРКУ..."
-          
-          # Умный скрипт настройки подписи
           cat << 'EOF' > setup_signing.dart
           import 'dart:io';
           void main() {
@@ -121,7 +92,6 @@ jobs:
               text = text.replaceAll('signingConfigs.getByName("debug")', 'signingConfigs.getByName("release")');
               text = text.replaceAll('signingConfig = signingConfigs.debug', 'signingConfig = signingConfigs.getByName("release")');
               kts.writeAsStringSync(text);
-              print('Configured Kotlin DSL (build.gradle.kts)');
             } else if (gradle.existsSync()) {
               var text = gradle.readAsStringSync();
               text = text.replaceFirst(
@@ -130,13 +100,11 @@ jobs:
               );
               text = text.replaceAll('signingConfig signingConfigs.debug', 'signingConfig signingConfigs.release');
               gradle.writeAsStringSync(text);
-              print('Configured Groovy (build.gradle)');
             }
           }
           EOF
           dart setup_signing.dart
 
-      # --- СБОРКА С АВТО-ПОВЫШЕНИЕМ ВЕРСИИ ---
       - name: Build APK
         run: flutter build apk --release --build-name=1.0.${{ github.run_number }} --build-number=${{ github.run_number }}
 
@@ -144,7 +112,6 @@ jobs:
         run: |
           export TZ="Asia/Ashgabat"
           BUILD_TIME=$(date +'%d-%m-%Y_%H-%M')
-          # Название будет: MService_CRM_v1.0.123_22-07-2024_15-30.apk
           NEW_NAME="MService_CRM_v1.0.${{ github.run_number }}_${BUILD_TIME}.apk"
           mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/$NEW_NAME
           echo "FINAL_APK_NAME=$NEW_NAME" >> $GITHUB_ENV
