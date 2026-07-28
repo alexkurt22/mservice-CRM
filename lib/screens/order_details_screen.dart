@@ -1,9 +1,13 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mservice_crm/services/fcm_service.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:path_provider/path_provider.dart';
 import 'client_profile_screen.dart'; 
 
 class OrderDetailsScreen extends StatefulWidget {
@@ -33,12 +37,52 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   bool _isLoading = false;
   bool _isBargaining = false; 
 
+  // --- АУДИО ПЛЕЕР ---
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  bool _isPlaying = false;
+  String? _tempAudioPath;
+
+  @override
+  void initState() {
+    super.initState();
+    _initAudioPlayer();
+  }
+
+  Future<void> _initAudioPlayer() async {
+    _audioPlayer.playerStateStream.listen((state) {
+      if (mounted) {
+        setState(() {
+          _isPlaying = state.playing && state.processingState != ProcessingState.completed;
+        });
+        if (state.processingState == ProcessingState.completed) {
+           _audioPlayer.stop();
+           _audioPlayer.seek(Duration.zero);
+        }
+      }
+    });
+
+    // Если есть аудио в базе, декодируем и готовим файл
+    if (widget.orderData['audio_base64'] != null) {
+      try {
+        final bytes = base64Decode(widget.orderData['audio_base64']);
+        final dir = await getTemporaryDirectory();
+        final file = File('${dir.path}/temp_audio_${widget.orderId}.aac');
+        await file.writeAsBytes(bytes);
+        _tempAudioPath = file.path;
+        await _audioPlayer.setFilePath(_tempAudioPath!);
+      } catch (e) {
+        print("Ошибка загрузки аудио: $e");
+      }
+    }
+  }
+
   @override
   void dispose() {
     for (var opt in _options) {
       opt['description']?.dispose();
       opt['price']?.dispose();
     }
+    _audioPlayer.dispose();
     super.dispose();
   }
 
@@ -119,7 +163,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   void _showDelegationSheet() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final String orderText = '''
-🛍 НОВЫЙ ЗАКАЗ #${widget.orderId.substring(0, 5).toUpperCase()}
+🛒 НОВЫЙ ЗАКАЗ #${widget.orderId.substring(0, 5).toUpperCase()}
 📱 Устройство: ${widget.orderData['device_type'] ?? 'Не указано'}
 ⚠️ Проблема: ${widget.orderData['problem'] ?? 'Не указана'}
 👤 Клиент: ${widget.orderData['client_name'] ?? 'Без имени'}
@@ -224,42 +268,37 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     );
   }
 
-  // --- ЛОГИКА НАЗНАЧЕНИЯ МАСТЕРА С ПУШАМИ И ЧАТОМ ---
   Future<void> _assignOrderToMaster(String empPhone, String empName, String orderText) async {
     setState(() => _isLoading = true);
     try {
-      // 1. Обновляем сам заказ
       await FirebaseFirestore.instance.collection('orders').doc(widget.orderId).update({
         'assigned_to': empPhone,
         'assigned_name': empName,
       });
 
-      // 2. Формируем комнату чата (ТИП TEAM)
       final prefs = await SharedPreferences.getInstance();
       final myPhone = prefs.getString('employee_phone') ?? 'admin';
       List<String> parts = [myPhone, empPhone];
       parts.sort();
-      String roomId = 'team_${parts[0]}_${parts[1]}'; // Обязательно префикс team_ для сотрудников
+      String roomId = 'team_${parts[0]}_${parts[1]}'; 
 
       final chatRef = FirebaseFirestore.instance.collection('chat_rooms').doc(roomId);
       await chatRef.set({
-        'type': 'team', // Чтобы бейдж падал в нужную кнопку на Дашборде
+        'type': 'team', 
         'participants': parts,
         'updated_at': FieldValue.serverTimestamp(),
         'last_message': 'Отправлен новый заказ',
         'last_sender': myPhone,
-        'unread_count': FieldValue.increment(1), // Увеличиваем счетчик непрочитанных!
+        'unread_count': FieldValue.increment(1), 
       }, SetOptions(merge: true));
 
-      // 3. Отправляем текст в саму переписку
       await chatRef.collection('messages').add({
         'text': 'Поступил новый заказ на ремонт:\n\n$orderText',
-        'sender_phone': myPhone, // Строго sender_phone, чтобы чат не крашился
+        'sender_phone': myPhone, 
         'created_at': FieldValue.serverTimestamp(),
-        'is_read': false, // Ставим статус непрочитанного
+        'is_read': false, 
       });
 
-      // 4. ОТПРАВКА PUSH-УВЕДОМЛЕНИЯ СОТРУДНИКУ
       final empDoc = await FirebaseFirestore.instance.collection('employees').doc(empPhone).get();
       if (empDoc.exists && empDoc.data()?['fcm_token'] != null) {
         await FCMService.sendPushNotification(
@@ -373,7 +412,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
-  // --- УМНОЕ ОКНО ЗАВЕРШЕНИЯ РЕМОНТА ---
   Future<void> _showCompletionDialog() async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final initialPrice = widget.orderData['price']?.toString() ?? '';
@@ -592,6 +630,121 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
+  // --- БЛОК ОТРИСОВКИ МЕДИА-ФАЙЛОВ ---
+  Widget _buildMediaAttachments(bool isDark) {
+    final imageBase64 = widget.orderData['image_base64'];
+    final audioBase64 = widget.orderData['audio_base64'];
+
+    if (imageBase64 == null && audioBase64 == null) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        Text('Прикрепленные файлы:', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white70 : Colors.blueGrey)),
+        const SizedBox(height: 8),
+
+        if (imageBase64 != null)
+          GestureDetector(
+            onTap: () {
+              showDialog(
+                context: context,
+                builder: (_) => Dialog(
+                  backgroundColor: Colors.transparent,
+                  insetPadding: const EdgeInsets.all(10),
+                  child: InteractiveViewer(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.memory(base64Decode(imageBase64), fit: BoxFit.contain),
+                    ),
+                  ),
+                ),
+              );
+            },
+            child: Container(
+              height: 150,
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: isDark ? Colors.grey[800]! : Colors.grey[300]!),
+                image: DecorationImage(
+                  image: MemoryImage(base64Decode(imageBase64)),
+                  fit: BoxFit.cover,
+                ),
+              ),
+              child: const Align(
+                alignment: Alignment.bottomRight,
+                child: Padding(
+                  padding: EdgeInsets.all(8.0),
+                  child: Icon(Icons.zoom_out_map, color: Colors.white, shadows: [Shadow(blurRadius: 5, color: Colors.black)]),
+                ),
+              ),
+            ),
+          ),
+
+        if (audioBase64 != null && _tempAudioPath != null)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.orange[900]?.withOpacity(0.2) : Colors.orange[50],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: isDark ? Colors.orange[800]! : Colors.orange[200]!)
+            ),
+            child: Row(
+              children: [
+                GestureDetector(
+                  onTap: () async {
+                    if (_isPlaying) {
+                      await _audioPlayer.pause();
+                    } else {
+                      await _audioPlayer.play();
+                    }
+                  },
+                  child: CircleAvatar(
+                    backgroundColor: Colors.orange,
+                    child: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: StreamBuilder<Duration>(
+                    stream: _audioPlayer.positionStream,
+                    builder: (context, snapshot) {
+                      final position = snapshot.data ?? Duration.zero;
+                      final total = _audioPlayer.duration ?? Duration.zero;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Голосовое сообщение', style: TextStyle(fontWeight: FontWeight.bold)),
+                          SliderTheme(
+                            data: SliderTheme.of(context).copyWith(
+                              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                              trackHeight: 3,
+                            ),
+                            child: Slider(
+                              value: position.inMilliseconds.toDouble(),
+                              max: total.inMilliseconds > 0 ? total.inMilliseconds.toDouble() : 1.0,
+                              activeColor: Colors.orange,
+                              inactiveColor: isDark ? Colors.grey[700] : Colors.orange[100],
+                              onChanged: (val) {
+                                _audioPlayer.seek(Duration(milliseconds: val.toInt()));
+                              },
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget _buildHistoryBlock(Map<String, dynamic> data, bool isDark) {
     final history = data['history'] as List<dynamic>?;
     if (history == null || history.isEmpty) return const SizedBox.shrink();
@@ -797,12 +950,19 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                                 borderRadius: BorderRadius.circular(8), 
                                 border: Border.all(color: isDark ? Colors.orange[800]! : Colors.orange[200]!)
                               ),
-                              child: Row(
+                              child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Icon(Icons.warning_amber_rounded, color: Colors.deepOrange, size: 20),
-                                  const SizedBox(width: 8),
-                                  Expanded(child: Text('${widget.orderData['problem'] ?? 'Не указана'}', style: TextStyle(fontSize: 15, color: isDark ? Colors.white : Colors.black87))),
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Icon(Icons.warning_amber_rounded, color: Colors.deepOrange, size: 20),
+                                      const SizedBox(width: 8),
+                                      Expanded(child: Text('${widget.orderData['problem'] ?? 'Не указана'}', style: TextStyle(fontSize: 15, color: isDark ? Colors.white : Colors.black87))),
+                                    ],
+                                  ),
+                                  // ЗДЕСЬ ДОБАВЛЕНЫ МЕДИА-ФАЙЛЫ
+                                  _buildMediaAttachments(isDark),
                                 ],
                               ),
                             ),
