@@ -69,7 +69,7 @@ jobs:
           # УБИЙЦА БАГА JNI (Надежный метод через Perl, который не ломает скобки)
           find /home/runner/.pub-cache/hosted -path "*/jni-*/android/build.gradle" -exec perl -0777 -pi -e 's/kotlin\s*\{[^}]*\}//g' {} + || true
 
-          # --- НОВОЕ: ЗАМЕНЯЕМ УСТАРЕВШИЙ JCENTER НА MAVENCENTRAL ---
+          # --- ЛЕЧИМ SPEECH_TO_TEXT: ЗАМЕНЯЕМ УСТАРЕВШИЙ JCENTER НА MAVENCENTRAL ---
           find /home/runner/.pub-cache/hosted -name "build.gradle" -type f -exec sed -i 's/jcenter()/mavenCentral()/g' {} +
 
       # --- ИНЪЕКЦИЯ СЕКРЕТОВ И САМОДИАГНОСТИКА КЛЮЧА ---
