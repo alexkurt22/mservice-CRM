@@ -9,7 +9,7 @@ import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import 'users_screen.dart';
 import 'orders_screen.dart';
 import 'database_cleanup_screen.dart'; 
-import 'settings_screen.dart'; // <--- ОБЫЧНЫЙ ВЫЗОВ НАСТРОЕК
+import 'settings_screen.dart'; 
 import 'chat_lists_screen.dart'; 
 import 'statistics_screen.dart';
 import 'tasks_screen.dart'; 
@@ -26,6 +26,8 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   String _myPhone = 'admin';
+  String _myRole = 'Сотрудник';
+  List<dynamic> _myPermissions = [];
 
   @override
   void initState() {
@@ -35,10 +37,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _loadUserData() async {
     final prefs = await SharedPreferences.getInstance();
+    final phone = prefs.getString('employee_phone') ?? 'admin';
+    
     setState(() {
-      _myPhone = prefs.getString('employee_phone') ?? 'admin';
+      _myPhone = phone;
     });
+
+    // Загружаем профиль сотрудника из базы, чтобы узнать его роль и права
+    if (phone != 'admin') {
+       final doc = await FirebaseFirestore.instance.collection('employees').doc(phone).get();
+       if (doc.exists) {
+         setState(() {
+           _myRole = doc.data()?['role'] ?? 'Сотрудник';
+           _myPermissions = doc.data()?['permissions'] ?? [];
+         });
+       }
+    }
+
     _setupPushNotifications(); 
+  }
+
+  bool _hasPermission(String permission) {
+    if (_myRole == 'Владелец') return true; // Владелец видит всё
+    return _myPermissions.contains(permission);
   }
 
   Future<void> _setupPushNotifications() async {
@@ -76,7 +97,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           UserAccountsDrawerHeader(
             decoration: BoxDecoration(color: isDark ? Colors.grey[900] : Colors.blueGrey[900]),
             accountName: const Text('M-SERVICE CRM', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 1.5, color: Colors.white)),
-            accountEmail: const Text('Панель Владельца', style: TextStyle(color: Colors.white70, fontSize: 14)),
+            accountEmail: Text(_myRole, style: const TextStyle(color: Colors.white70, fontSize: 14)),
             currentAccountPicture: CircleAvatar(
               backgroundColor: isDark ? Colors.grey[800] : Colors.white,
               child: Icon(Icons.admin_panel_settings, size: 40, color: isDark ? Colors.white : Colors.blueGrey[900]),
@@ -91,6 +112,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Text('ИНСТРУМЕНТЫ', style: TextStyle(color: isDark ? Colors.grey[500] : Colors.blueGrey[400], fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1.2)),
                 ),
                 
+                // ОТМЕНЕННЫЕ ЗАКАЗЫ (видят все)
                 StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'canceled').snapshots(),
                   builder: (context, snapshot) {
@@ -98,7 +120,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     if (snapshot.hasData) {
                       unreadCanceledCount = snapshot.data!.docs.where((d) {
                         final data = d.data() as Map<String, dynamic>;
-                        return data['has_unread_update'] == true;
+                        return data['has_unread_update'] == true && (_hasPermission('view_all_orders') || data['assigned_to'] == _myPhone);
                       }).length;
                     }
                     
@@ -121,65 +143,71 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 Divider(height: 1, color: isDark ? Colors.grey[800] : Colors.grey[300]),
 
-                ListTile(
-                  leading: Icon(Icons.bar_chart, color: isDark ? Colors.white70 : Colors.blueGrey[700]),
-                  title: Text('Статистика', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const StatisticsScreen()));
-                  },
-                ),
-                ListTile(
-                  leading: Icon(Icons.send_to_mobile, color: isDark ? Colors.white70 : Colors.blueGrey[700]),
-                  title: Text('Создать рассылку', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const BulkPushScreen()));
-                  },
-                ),
+                if (_hasPermission('view_finance'))
+                  ListTile(
+                    leading: Icon(Icons.bar_chart, color: isDark ? Colors.white70 : Colors.blueGrey[700]),
+                    title: Text('Статистика', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const StatisticsScreen()));
+                    },
+                  ),
+
+                if (_hasPermission('send_push'))
+                  ListTile(
+                    leading: Icon(Icons.send_to_mobile, color: isDark ? Colors.white70 : Colors.blueGrey[700]),
+                    title: Text('Создать рассылку', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const BulkPushScreen()));
+                    },
+                  ),
+                
                 ListTile(
                   leading: Icon(Icons.edit_note, color: isDark ? Colors.white70 : Colors.blueGrey[700]),
-                  title: Text('Заметки администратора', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                  title: Text('Заметки', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminNotesScreen()));
                   },
                 ),
                 
-                ListTile(
-                  leading: Icon(Icons.dynamic_feed, color: isDark ? Colors.pink[300] : Colors.pink[600]),
-                  title: Text('Контент и Новости', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const ContentManagerScreen()));
-                  },
-                ),
-
-                ListTile(
-                  leading: Icon(Icons.settings, color: isDark ? Colors.white70 : Colors.blueGrey[700]),
-                  title: Text('Настройки', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
-                  onTap: () {
-                    Navigator.pop(context);
-                    // --- ТЕПЕРЬ ОШИБКИ НЕТ, вызываем просто: ---
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
-                  },
-                ),
+                if (_hasPermission('manage_settings')) ...[
+                  ListTile(
+                    leading: Icon(Icons.dynamic_feed, color: isDark ? Colors.pink[300] : Colors.pink[600]),
+                    title: Text('Контент и Новости', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const ContentManagerScreen()));
+                    },
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.settings, color: isDark ? Colors.white70 : Colors.blueGrey[700]),
+                    title: Text('Настройки', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+                    },
+                  ),
+                ]
               ],
             ),
           ),
           Divider(height: 1, color: isDark ? Colors.grey[800] : Colors.grey[300]),
-          SafeArea(
-            top: false,
-            child: ListTile(
-              tileColor: isDark ? Colors.red[900]?.withOpacity(0.2) : Colors.red[50],
-              leading: Icon(Icons.delete_sweep, color: isDark ? Colors.red[300] : Colors.red),
-              title: Text('Очистка базы данных', style: TextStyle(color: isDark ? Colors.red[300] : Colors.red, fontWeight: FontWeight.bold, fontSize: 15)),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const DatabaseCleanupScreen()));
-              },
+          
+          if (_myRole == 'Владелец')
+            SafeArea(
+              top: false,
+              child: ListTile(
+                tileColor: isDark ? Colors.red[900]?.withOpacity(0.2) : Colors.red[50],
+                leading: Icon(Icons.delete_sweep, color: isDark ? Colors.red[300] : Colors.red),
+                title: Text('Очистка базы данных', style: TextStyle(color: isDark ? Colors.red[300] : Colors.red, fontWeight: FontWeight.bold, fontSize: 15)),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const DatabaseCleanupScreen()));
+                },
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -267,7 +295,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             if (snapshot.hasData) {
               unreadCount = snapshot.data!.docs.where((d) {
                 final data = d.data() as Map<String, dynamic>;
-                return data['has_unread_update'] == true;
+                // Иконка гамбургера звенит только если это отмененный заказ мастера или у него есть права на все заказы
+                return data['has_unread_update'] == true && (_hasPermission('view_all_orders') || data['assigned_to'] == _myPhone);
               }).length;
             }
             return Builder(
@@ -332,8 +361,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
               int count = data['unread_count'] as int? ?? 0;
               
               if (count > 0 && data['last_sender'] != _myPhone) {
-                if (data['type'] == 'private') unreadClientChats += count;
-                if (data['type'] == 'team') unreadTeamChats += count;
+                // Если нет прав на управление клиентами, он не увидит приватные чаты
+                if (data['type'] == 'private' && _hasPermission('manage_clients')) unreadClientChats += count;
+                
+                // В командном чате проверяем, участвует ли он
+                if (data['type'] == 'team') {
+                   List<dynamic> participants = data['participants'] ?? [];
+                   if (participants.contains(_myPhone)) {
+                     unreadTeamChats += count;
+                   }
+                }
               }
             }
           }
@@ -342,19 +379,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
             mainAxisAlignment: MainAxisAlignment.end,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Badge(
-                isLabelVisible: unreadClientChats > 0,
-                label: Text(unreadClientChats.toString(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                backgroundColor: Colors.red,
-                offset: const Offset(-4, -4),
-                child: FloatingActionButton.extended(
-                  heroTag: 'client_chat_btn',
-                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ClientChatsListScreen())),
-                  backgroundColor: Colors.blue[700],
-                  icon: const Icon(Icons.support_agent, color: Colors.white),
-                  label: const Text('Чаты с клиентами', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              if (_hasPermission('manage_clients'))
+                Badge(
+                  isLabelVisible: unreadClientChats > 0,
+                  label: Text(unreadClientChats.toString(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  backgroundColor: Colors.red,
+                  offset: const Offset(-4, -4),
+                  child: FloatingActionButton.extended(
+                    heroTag: 'client_chat_btn',
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ClientChatsListScreen())),
+                    backgroundColor: Colors.blue[700],
+                    icon: const Icon(Icons.support_agent, color: Colors.white),
+                    label: const Text('Чаты с клиентами', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
                 ),
-              ),
               const SizedBox(height: 16),
               Badge(
                 isLabelVisible: unreadTeamChats > 0,
@@ -407,6 +445,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: _buildStreamStat(
                     stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'new').snapshots(),
                     color: isDark ? Colors.blue[300]! : Colors.blue[800]!,
+                    filter: (doc) {
+                      if (_hasPermission('view_all_orders')) return true;
+                      final data = doc.data() as Map<String, dynamic>;
+                      return data['assigned_to'] == _myPhone; // Если прав нет, видит только свои
+                    }
                   ),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(status: 'new', title: 'Новые заказы'))),
                 ),
@@ -419,6 +462,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: _buildStreamStat(
                     stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'awaiting_approval').snapshots(),
                     color: isDark ? Colors.deepPurple[300]! : Colors.deepPurple[800]!,
+                    filter: (doc) {
+                      if (_hasPermission('view_all_orders')) return true;
+                      final data = doc.data() as Map<String, dynamic>;
+                      return data['assigned_to'] == _myPhone;
+                    }
                   ),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(status: 'awaiting_approval', title: 'Ожидают ответа'))),
                 ),
@@ -431,6 +479,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: _buildStreamStat(
                     stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'in_progress').snapshots(),
                     color: isDark ? Colors.orange[300]! : Colors.orange[800]!,
+                    filter: (doc) {
+                      if (_hasPermission('view_all_orders')) return true;
+                      final data = doc.data() as Map<String, dynamic>;
+                      return data['assigned_to'] == _myPhone;
+                    }
                   ),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(status: 'in_progress', title: 'В работе (Выполняются)'))),
                 ),
@@ -443,6 +496,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: _buildStreamStat(
                     stream: FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'completed').snapshots(),
                     color: isDark ? Colors.teal[300]! : Colors.teal[800]!,
+                    filter: (doc) {
+                      if (_hasPermission('view_all_orders')) return true;
+                      final data = doc.data() as Map<String, dynamic>;
+                      return data['assigned_to'] == _myPhone;
+                    }
                   ),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen(status: 'completed', title: 'Выполненные заказы'))),
                 ),
@@ -451,94 +509,95 @@ class _DashboardScreenState extends State<DashboardScreen> {
             
             const SizedBox(height: 32),
 
-            Row(
-              children: [
-                Icon(Icons.people_alt, color: isDark ? Colors.blueGrey[300] : Colors.blueGrey[800]),
-                const SizedBox(width: 8),
-                Text('Клиенты', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: isDark ? Colors.white : Colors.blueGrey[900], letterSpacing: 1.2)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: 1.1,
-              children: [
-                _buildStatCard(
-                  context: context,
-                  isDark: isDark,
-                  title: 'Ждут одобрения',
-                  icon: Icons.timer,
-                  color: Colors.orange,
-                  child: _buildStreamStat(
-                    stream: FirebaseFirestore.instance.collection('clients').snapshots(),
-                    color: isDark ? Colors.orange[300]! : Colors.orange[800]!,
-                    filter: (doc) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      return data['is_approved'] == false && data['rejection_reason'] == null && data['is_offline'] != true;
-                    }
+            // --- КЛИЕНТОВ ВИДЯТ ТОЛЬКО ТЕ, У КОГО ЕСТЬ ПРАВА manage_clients ---
+            if (_hasPermission('manage_clients')) ...[
+              Row(
+                children: [
+                  Icon(Icons.people_alt, color: isDark ? Colors.blueGrey[300] : Colors.blueGrey[800]),
+                  const SizedBox(width: 8),
+                  Text('Клиенты', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: isDark ? Colors.white : Colors.blueGrey[900], letterSpacing: 1.2)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 1.1,
+                children: [
+                  _buildStatCard(
+                    context: context,
+                    isDark: isDark,
+                    title: 'Ждут одобрения',
+                    icon: Icons.timer,
+                    color: Colors.orange,
+                    child: _buildStreamStat(
+                      stream: FirebaseFirestore.instance.collection('clients').snapshots(),
+                      color: isDark ? Colors.orange[300]! : Colors.orange[800]!,
+                      filter: (doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        return data['is_approved'] == false && data['rejection_reason'] == null && data['is_offline'] != true;
+                      }
+                    ),
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(tabType: 0, title: 'Ждут одобрения'))),
                   ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(tabType: 0, title: 'Ждут одобрения'))),
-                ),
-                _buildStatCard(
-                  context: context,
-                  isDark: isDark,
-                  title: 'Без приложения',
-                  icon: Icons.person_outline, 
-                  color: Colors.grey,
-                  child: _buildStreamStat(
-                    stream: FirebaseFirestore.instance.collection('clients').snapshots(),
-                    color: isDark ? Colors.grey[400]! : Colors.grey[800]!,
-                    filter: (doc) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      return data['is_offline'] == true;
-                    }
+                  _buildStatCard(
+                    context: context,
+                    isDark: isDark,
+                    title: 'Без приложения',
+                    icon: Icons.person_outline, 
+                    color: Colors.grey,
+                    child: _buildStreamStat(
+                      stream: FirebaseFirestore.instance.collection('clients').snapshots(),
+                      color: isDark ? Colors.grey[400]! : Colors.grey[800]!,
+                      filter: (doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        return data['is_offline'] == true;
+                      }
+                    ),
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(tabType: 1, title: 'Без приложения'))),
                   ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(tabType: 1, title: 'Без приложения'))),
-                ),
-                _buildStatCard(
-                  context: context,
-                  isDark: isDark,
-                  title: 'С приложением',
-                  icon: Icons.verified_user,
-                  color: Colors.green,
-                  child: _buildStreamStat(
-                    stream: FirebaseFirestore.instance.collection('clients').snapshots(),
-                    color: isDark ? Colors.green[300]! : Colors.green[800]!,
-                    filter: (doc) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      return data['is_approved'] == true && data['is_offline'] != true; 
-                    }
+                  _buildStatCard(
+                    context: context,
+                    isDark: isDark,
+                    title: 'С приложением',
+                    icon: Icons.verified_user,
+                    color: Colors.green,
+                    child: _buildStreamStat(
+                      stream: FirebaseFirestore.instance.collection('clients').snapshots(),
+                      color: isDark ? Colors.green[300]! : Colors.green[800]!,
+                      filter: (doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        return data['is_approved'] == true && data['is_offline'] != true; 
+                      }
+                    ),
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(tabType: 2, title: 'С приложением'))),
                   ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(tabType: 2, title: 'С приложением'))),
-                ),
-                _buildStatCard(
-                  context: context,
-                  isDark: isDark,
-                  title: 'Отклоненные',
-                  icon: Icons.block,
-                  color: Colors.red,
-                  child: _buildStreamStat(
-                    stream: FirebaseFirestore.instance.collection('clients').snapshots(),
-                    color: isDark ? Colors.red[300]! : Colors.red[800]!,
-                    filter: (doc) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      return data['is_approved'] == false && data['rejection_reason'] != null;
-                    }
+                  _buildStatCard(
+                    context: context,
+                    isDark: isDark,
+                    title: 'Отклоненные',
+                    icon: Icons.block,
+                    color: Colors.red,
+                    child: _buildStreamStat(
+                      stream: FirebaseFirestore.instance.collection('clients').snapshots(),
+                      color: isDark ? Colors.red[300]! : Colors.red[800]!,
+                      filter: (doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        return data['is_approved'] == false && data['rejection_reason'] != null;
+                      }
+                    ),
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(tabType: 3, title: 'Отклоненные'))),
                   ),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersScreen(tabType: 3, title: 'Отклоненные'))),
-                ),
-              ],
-            ),
-            
-            const SizedBox(height: 32),
+                ],
+              ),
+              const SizedBox(height: 32),
+            ],
           ],
         ),
       ),
     );
   }
 }
-
