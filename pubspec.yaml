@@ -11,20 +11,23 @@ dependencies:
     sdk: flutter
   intl: ^0.18.0
   cupertino_icons: ^1.0.8
-  firebase_core: ^3.1.0
-  cloud_firestore: ^5.0.1
-  image_picker: ^1.0.4
-  firebase_storage: ^12.4.10
+  firebase_core: ^2.32.0
+  cloud_firestore: ^4.17.5
+  image_picker: ^1.1.2
+  firebase_storage: ^11.6.0
   googleapis_auth: ^1.4.1
-  http: ^1.1.2
+  http: ^1.2.0
   shared_preferences: ^2.2.3
   url_launcher: ^6.3.0
-  firebase_messaging: ^15.2.10
-  share_plus: ^10.1.0 
+  firebase_messaging: ^14.9.4
+  share_plus: ^9.0.0 
   file_picker: ^8.0.0
   flutter_ringtone_player: ^4.0.0+4
-  just_audio: ^0.9.36 # ДОБАВЛЕНО ДЛЯ ВОСПРОИЗВЕДЕНИЯ АУДИО
-  path_provider: ^2.1.2 # ДОБАВЛЕНО ДЛЯ СОХРАНЕНИЯ ВРЕМЕННЫХ ФАЙЛОВ
+  just_audio: ^0.9.36
+  path_provider: ^2.1.2
+  flutter_sound: ^9.2.13      # ЗАПИСЬ АУДИО
+  permission_handler: ^11.3.1 # ПРАВА
+  speech_to_text: ^6.5.1      # ТРАНСКРИБАЦИЯ
 
 dev_dependencies:
   flutter_test:
