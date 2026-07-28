@@ -108,7 +108,7 @@ class _ImportClientsScreenState extends State<ImportClientsScreen> {
             _pasteController.text = extractedText; 
           });
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Файл расшифрован! Проверьте текст и нажмите "Анализировать"'), backgroundColor: Colors.green)
+            const SnackBar(content: Text('Файл расшифрован! Нажмите "Анализировать"'), backgroundColor: Colors.green)
           );
         } else {
            ScaffoldMessenger.of(context).showSnackBar(
