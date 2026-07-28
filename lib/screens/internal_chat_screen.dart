@@ -9,7 +9,6 @@ import 'package:flutter_sound/flutter_sound.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../services/push_service.dart'; 
 
 class InternalChatScreen extends StatefulWidget {
@@ -36,19 +35,15 @@ class _InternalChatScreenState extends State<InternalChatScreen> {
   final AudioPlayer _audioPlayer = AudioPlayer();
   String? _currentlyPlayingId;
 
-  final stt.SpeechToText _speechToText = stt.SpeechToText();
-  String _recognizedText = '';
-
   @override
   void initState() {
     super.initState();
     _loadEmployeeData();
     _initRecorder();
-    _initSpeechToText();
     
     _audioPlayer.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed) {
-        setState(() => _currentlyPlayingId = null);
+        if (mounted) setState(() => _currentlyPlayingId = null);
         _audioPlayer.stop();
       }
     });
@@ -68,18 +63,14 @@ class _InternalChatScreenState extends State<InternalChatScreen> {
     await _audioRecorder!.openRecorder();
   }
 
-  Future<void> _initSpeechToText() async {
-    await _speechToText.initialize();
-  }
-
   Future<void> _loadEmployeeData() async {
     final prefs = await SharedPreferences.getInstance();
     final phone = prefs.getString('employee_phone') ?? "";
-    setState(() => _employeePhone = phone);
+    if (mounted) setState(() => _employeePhone = phone);
     
     final doc = await FirebaseFirestore.instance.collection('employees').doc(phone).get();
     if (doc.exists) {
-      setState(() => _employeeName = doc.data()?['name'] ?? "Сотрудник");
+      if (mounted) setState(() => _employeeName = doc.data()?['name'] ?? "Сотрудник");
     }
   }
 
@@ -106,23 +97,15 @@ class _InternalChatScreenState extends State<InternalChatScreen> {
   Future<void> _startRecording() async {
     var statusMicrophone = await Permission.microphone.request();
     if (statusMicrophone != PermissionStatus.granted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Нет разрешения!')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Нет разрешения!')));
       return;
     }
     try {
       final tempDir = await getTemporaryDirectory();
       _currentAudioPath = '${tempDir.path}/internal_audio_${DateTime.now().millisecondsSinceEpoch}.aac';
-      _recognizedText = '';
-      
-      if (_speechToText.isAvailable) {
-        _speechToText.listen(
-          onResult: (result) => setState(() => _recognizedText = result.recognizedWords),
-          localeId: 'ru_RU', 
-        );
-      }
 
       await _audioRecorder!.startRecorder(toFile: _currentAudioPath, codec: Codec.aacADTS);
-      setState(() => _isRecording = true);
+      if (mounted) setState(() => _isRecording = true);
     } catch (e) {
       debugPrint('Ошибка записи: $e');
     }
@@ -132,14 +115,12 @@ class _InternalChatScreenState extends State<InternalChatScreen> {
     if (!_isRecording) return;
     try {
       await _audioRecorder!.stopRecorder();
-      await _speechToText.stop();
-      setState(() => _isRecording = false);
+      if (mounted) setState(() => _isRecording = false);
 
       if (_currentAudioPath != null) {
         final bytes = await File(_currentAudioPath!).readAsBytes();
         final base64Audio = base64Encode(bytes);
-        String transcription = _recognizedText.isNotEmpty ? _recognizedText : 'Голосовое сообщение';
-        await _sendMessageToDb(text: '🎤 $transcription', audioBase64: base64Audio);
+        await _sendMessageToDb(text: '🎤 Голосовое сообщение', audioBase64: base64Audio);
       }
     } catch (e) {
       debugPrint('Ошибка: $e');
@@ -166,7 +147,7 @@ class _InternalChatScreenState extends State<InternalChatScreen> {
   Future<void> _playAudio(String messageId, String base64Audio) async {
     if (_currentlyPlayingId == messageId) {
       await _audioPlayer.pause();
-      setState(() => _currentlyPlayingId = null);
+      if (mounted) setState(() => _currentlyPlayingId = null);
       return;
     }
     try {
@@ -175,7 +156,7 @@ class _InternalChatScreenState extends State<InternalChatScreen> {
       final file = File('${dir.path}/play_$messageId.aac');
       await file.writeAsBytes(bytes);
       await _audioPlayer.setFilePath(file.path);
-      setState(() => _currentlyPlayingId = messageId);
+      if (mounted) setState(() => _currentlyPlayingId = messageId);
       await _audioPlayer.play();
     } catch (e) {
       debugPrint("Ошибка проигрывания: $e");
