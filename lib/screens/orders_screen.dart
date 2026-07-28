@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'order_details_screen.dart';
 import 'offline_order_screen.dart'; 
 
@@ -18,9 +19,42 @@ class OrdersScreen extends StatefulWidget {
 }
 
 class _OrdersScreenState extends State<OrdersScreen> {
-  // Контроллер для умного поиска
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  
+  String _myPhone = 'admin';
+  String _myRole = 'Сотрудник';
+  List<dynamic> _myPermissions = [];
+  bool _isLoadingUser = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final phone = prefs.getString('employee_phone') ?? 'admin';
+    
+    if (phone != 'admin') {
+       final doc = await FirebaseFirestore.instance.collection('employees').doc(phone).get();
+       if (doc.exists) {
+         _myRole = doc.data()?['role'] ?? 'Сотрудник';
+         _myPermissions = doc.data()?['permissions'] ?? [];
+       }
+    }
+    
+    setState(() {
+      _myPhone = phone;
+      _isLoadingUser = false;
+    });
+  }
+
+  bool _hasPermission(String permission) {
+    if (_myRole == 'Владелец') return true; 
+    return _myPermissions.contains(permission);
+  }
 
   @override
   void dispose() {
@@ -29,6 +63,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
   }
 
   Widget _buildOrdersList(String statusKey, bool isDark) {
+    if (_isLoadingUser) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('orders')
@@ -42,19 +80,22 @@ class _OrdersScreenState extends State<OrdersScreen> {
           return Center(child: Text('Ошибка базы данных', style: TextStyle(color: Colors.red[700])));
         }
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.inbox_outlined, size: 64, color: isDark ? Colors.grey[700] : Colors.blueGrey[200]),
-                const SizedBox(height: 16),
-                Text('В этой категории пока пусто', style: TextStyle(color: isDark ? Colors.grey[400] : Colors.blueGrey[400], fontSize: 16)),
-              ],
-            ),
-          );
+          return _buildEmptyState(isDark);
         }
 
         var docs = snapshot.data!.docs.toList();
+
+        // --- ЛОГИКА ОГРАНИЧЕНИЯ ДОСТУПА ПО РОЛЯМ ---
+        if (!_hasPermission('view_all_orders')) {
+          docs = docs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            return data['assigned_to'] == _myPhone;
+          }).toList();
+        }
+
+        if (docs.isEmpty) {
+           return _buildEmptyState(isDark);
+        }
 
         // --- ЛОГИКА УМНОГО ПОИСКА ЗАКАЗОВ ---
         if (_searchQuery.isNotEmpty) {
@@ -66,7 +107,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
             final device = (data['device_type'] ?? '').toString().toLowerCase();
             final problem = (data['problem'] ?? '').toString().toLowerCase();
             
-            // Ищем совпадения в имени, телефоне, устройстве или проблеме
             return name.contains(query) || phone.contains(query) || device.contains(query) || problem.contains(query);
           }).toList();
         }
@@ -88,7 +128,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
           final aData = a.data() as Map<String, dynamic>;
           final bData = b.data() as Map<String, dynamic>;
           
-          // ВАЖНО: Сначала показываем непрочитанные заказы
           bool aUnread = aData['has_unread_update'] == true;
           bool bUnread = bData['has_unread_update'] == true;
           if (aUnread && !bUnread) return -1;
@@ -116,7 +155,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
             final clientName = data['client_name'] ?? 'Неизвестный клиент';
             final deviceType = data['device_type'] ?? 'Устройство';
             final currentStatus = data['status'] ?? 'new';
-            final hasUnreadUpdate = data['has_unread_update'] == true; // Флаг непрочитанного
+            final hasUnreadUpdate = data['has_unread_update'] == true; 
             
             Color iconColor = Colors.orange;
             IconData statusIcon = Icons.new_releases;
@@ -135,7 +174,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
               statusIcon = Icons.cancel;
             }
 
-            // ОПРЕДЕЛЯЕМ ФОН КАРТОЧКИ ДЛЯ ВНИМАНИЯ
             Color cardColor = Theme.of(context).cardColor;
             BorderSide borderSide = BorderSide(color: isDark ? Colors.grey[800]! : Colors.transparent);
 
@@ -155,7 +193,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
               child: InkWell(
                 borderRadius: BorderRadius.circular(12),
                 onTap: () async {
-                  // Если заказ был непрочитанным, снимаем этот флаг в базе при входе в заказ
                   if (hasUnreadUpdate) {
                     await FirebaseFirestore.instance.collection('orders').doc(doc.id).update({
                       'has_unread_update': false,
@@ -222,6 +259,19 @@ class _OrdersScreenState extends State<OrdersScreen> {
     );
   }
 
+  Widget _buildEmptyState(bool isDark) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.inbox_outlined, size: 64, color: isDark ? Colors.grey[700] : Colors.blueGrey[200]),
+          const SizedBox(height: 16),
+          Text('В этой категории пока пусто', style: TextStyle(color: isDark ? Colors.grey[400] : Colors.blueGrey[400], fontSize: 16)),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -233,7 +283,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
         foregroundColor: Colors.white,
         title: Text(widget.title), 
       ),
-      floatingActionButton: widget.status == 'in_progress'
+      floatingActionButton: widget.status == 'in_progress' && _hasPermission('view_all_orders') 
           ? Padding(
               padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 8.0),
               child: FloatingActionButton(
@@ -251,7 +301,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
           : null,
       body: Column(
         children: [
-          // ПОЛОСА УМНОГО ПОИСКА
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
@@ -286,8 +335,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
               ),
             ),
           ),
-          
-          // СПИСОК ЗАКАЗОВ
           Expanded(child: _buildOrdersList(widget.status, isDark)),
         ],
       ), 
