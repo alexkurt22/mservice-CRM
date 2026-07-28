@@ -27,15 +27,31 @@ jobs:
       - name: Generate system files
         run: flutter create --platforms=android .
         
-      - name: Fix Android Manifest for SMS
+      # --- ДИНАМИЧЕСКИ ДОБАВЛЯЕМ ПРАВА НА СМС, МИКРОФОН И КАМЕРУ ---
+      - name: Fix Android Manifest (Permissions & SMS)
         run: |
-          echo "import 'dart:io'; void main() { var f = File('android/app/src/main/AndroidManifest.xml'); var text = f.readAsStringSync(); text = text.replaceFirst('<application', '<queries><intent><action android:name=\"android.intent.action.VIEW\"/><data android:scheme=\"sms\"/></intent></queries><application'); f.writeAsStringSync(text); }" > fix_manifest.dart
+          cat << 'EOF' > fix_manifest.dart
+          import 'dart:io';
+          void main() {
+            var f = File('android/app/src/main/AndroidManifest.xml');
+            var text = f.readAsStringSync();
+            var additions = '''
+            <queries><intent><action android:name="android.intent.action.VIEW"/><data android:scheme="sms"/></intent></queries>
+            <uses-permission android:name="android.permission.RECORD_AUDIO" />
+            <uses-permission android:name="android.permission.CAMERA" />
+            <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+            <application
+            ''';
+            text = text.replaceFirst('<application', additions);
+            f.writeAsStringSync(text);
+          }
+          EOF
           dart fix_manifest.dart
 
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Fix Android SDK versions (for share_plus)
+      - name: Fix Android SDK versions and kill JNI bug
         run: |
           find /home/runner/.pub-cache/hosted -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion 33/compileSdkVersion 36/g' {} +
           find /home/runner/.pub-cache/hosted -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion 34/compileSdkVersion 36/g' {} +
@@ -49,6 +65,9 @@ jobs:
           sed -i 's/targetSdkVersion flutter.targetSdkVersion/targetSdkVersion 34/g' android/app/build.gradle 2>/dev/null || true
           sed -i 's/targetSdkVersion 33/targetSdkVersion 34/g' android/app/build.gradle 2>/dev/null || true
           sed -i 's/targetSdk = 33/targetSdk = 34/g' android/app/build.gradle.kts 2>/dev/null || true
+          
+          # УБИЙЦА БАГА JNI (Надежный метод через Perl, который не ломает скобки)
+          find /home/runner/.pub-cache/hosted -path "*/jni-*/android/build.gradle" -exec perl -0777 -pi -e 's/kotlin\s*\{[^}]*\}//g' {} + || true
 
       # --- ИНЪЕКЦИЯ СЕКРЕТОВ И САМОДИАГНОСТИКА КЛЮЧА ---
       - name: Inject Secret Keys and Permanent Keystore
