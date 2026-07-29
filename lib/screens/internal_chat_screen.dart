@@ -83,7 +83,7 @@ class _InternalChatScreenState extends State<InternalChatScreen> {
 
   Future<void> _pickAndSendImage() async {
     try {
-      final pickedFile = await _imagePicker.pickImage(source: ImageSource.gallery, imageQuality: 50);
+      final pickedFile = await _imagePicker.pickImage(source: ImageSource.gallery, imageQuality: 40, maxWidth: 800, maxHeight: 800);
       if (pickedFile != null) {
         final bytes = await File(pickedFile.path).readAsBytes();
         final base64Image = base64Encode(bytes);
@@ -104,7 +104,7 @@ class _InternalChatScreenState extends State<InternalChatScreen> {
       final tempDir = await getTemporaryDirectory();
       _currentAudioPath = '${tempDir.path}/internal_audio_${DateTime.now().millisecondsSinceEpoch}.aac';
 
-      await _audioRecorder!.startRecorder(toFile: _currentAudioPath, codec: Codec.aacADTS);
+      await _audioRecorder!.startRecorder(toFile: _currentAudioPath, codec: Codec.aacADTS, bitRate: 16000, sampleRate: 16000);
       if (mounted) setState(() => _isRecording = true);
     } catch (e) {
       debugPrint('Ошибка записи: $e');
@@ -340,3 +340,4 @@ class _InternalChatScreenState extends State<InternalChatScreen> {
     );
   }
 }
+
