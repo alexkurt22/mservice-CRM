@@ -77,9 +77,15 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     await _sendMessageToDb(text: text);
   }
 
+  // --- ЖЕСТКОЕ СЖАТИЕ ФОТО ДЛЯ FIRESTORE ---
   Future<void> _pickAndSendImage() async {
     try {
-      final pickedFile = await _imagePicker.pickImage(source: ImageSource.gallery, imageQuality: 50);
+      final pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.gallery, 
+        imageQuality: 40, 
+        maxWidth: 800, 
+        maxHeight: 800
+      );
       if (pickedFile != null) {
         final bytes = await File(pickedFile.path).readAsBytes();
         final base64Image = base64Encode(bytes);
@@ -90,6 +96,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     }
   }
 
+  // --- ЖЕСТКОЕ СЖАТИЕ АУДИО ДЛЯ FIRESTORE ---
   Future<void> _startRecording() async {
     var statusMicrophone = await Permission.microphone.request();
     if (statusMicrophone != PermissionStatus.granted) {
@@ -100,7 +107,12 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       final tempDir = await getTemporaryDirectory();
       _currentAudioPath = '${tempDir.path}/chat_audio_${DateTime.now().millisecondsSinceEpoch}.aac';
       
-      await _audioRecorder!.startRecorder(toFile: _currentAudioPath, codec: Codec.aacADTS);
+      await _audioRecorder!.startRecorder(
+        toFile: _currentAudioPath, 
+        codec: Codec.aacADTS,
+        bitRate: 16000, 
+        sampleRate: 16000
+      );
       if (mounted) setState(() => _isRecording = true);
     } catch (e) {
       debugPrint('Ошибка записи: $e');
@@ -149,7 +161,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         if (widget.roomId.contains('team_')) {
           final empDoc = await FirebaseFirestore.instance.collection('employees').doc(targetPhone).get();
           if (empDoc.exists && empDoc.data()?['fcm_token'] != null) {
-            await PushService.sendPushToToken(empDoc.data()!['fcm_token'], 'Новое сообщение', text);
+            await PushService.sendPushToToken(empDoc.data()!['fcm_token'], 'Новое сообщение от коллеги', text);
           }
         } else {
           final clientDoc = await FirebaseFirestore.instance.collection('clients').doc(targetPhone).get();
