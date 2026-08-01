@@ -39,14 +39,19 @@ class _StatsScreenState extends State<StatsScreen> {
 
   Widget _buildStatCard(String title, int current, int limit, IconData icon) {
     if (current == -1) {
-      return ListTile(
-        leading: Icon(icon, color: Colors.grey),
-        title: Text(title),
-        subtitle: const Text('Данные недоступны (Проверьте права в Cloud Console)'),
+      return Card(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: ListTile(
+          leading: Icon(icon, color: Colors.grey),
+          title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+          subtitle: const Text('Ошибка подключения к API мониторинга'),
+        ),
       );
     }
 
-    double percent = current / limit;
+    double percent = limit > 0 ? (current / limit) : 0.0;
     Color progressColor = Colors.green;
     if (percent > 0.7) progressColor = Colors.orange;
     if (percent > 0.9) progressColor = Colors.red;
@@ -147,7 +152,7 @@ class _StatsScreenState extends State<StatsScreen> {
   }
 }
 
-/// Сервисный класс, встроенный прямо в файл для удобства
+/// Сервисный класс
 class MonitoringService {
   static const String projectId = 'mserviceapp-79557'; 
 
@@ -163,34 +168,40 @@ class MonitoringService {
           credentials, [monitoring.MonitoringApi.monitoringReadScope]);
       final monitoringApi = monitoring.MonitoringApi(client);
 
-      // 3. Высчитываем время (с начала сегодняшнего дня по UTC)
+      // 3. Высчитываем интервал с начала сегодняшнего дня по UTC
       final now = DateTime.now().toUtc();
       final startOfDay = DateTime.utc(now.year, now.month, now.day);
       
       final startTime = '${startOfDay.toIso8601String()}Z';
       final endTime = '${now.toIso8601String()}Z';
 
-      // 4. Функция для запроса конкретной метрики
+      // 4. Безопасная функция запроса метрик (без сервеной агрегации)
       Future<int> fetchMetric(String metricType) async {
-        // Мы передаем параметры фильтрации напрямую в функцию list()
-        final response = await monitoringApi.projects.timeSeries.list(
-          'projects/$projectId',
-          filter: 'metric.type="firestore.googleapis.com/document/$metricType"',
-          interval_startTime: startTime,
-          interval_endTime: endTime,
-          aggregation_alignmentPeriod: '86400s', // Окно группировки: 1 день
-          aggregation_perSeriesAligner: 'ALIGN_SUM', // Суммируем все запросы
-        );
+        try {
+          final response = await monitoringApi.projects.timeSeries.list(
+            'projects/$projectId',
+            filter: 'metric.type="firestore.googleapis.com/document/$metricType"',
+            interval_startTime: startTime,
+            interval_endTime: endTime,
+          );
 
-        if (response.timeSeries != null && response.timeSeries!.isNotEmpty) {
-          final points = response.timeSeries!.first.points;
-          if (points != null && points.isNotEmpty) {
-            return points.first.value?.int64Value != null 
-                ? int.parse(points.first.value!.int64Value!) 
-                : 0;
+          int totalCount = 0;
+          if (response.timeSeries != null && response.timeSeries!.isNotEmpty) {
+            for (var series in response.timeSeries!) {
+              if (series.points != null) {
+                for (var point in series.points!) {
+                  if (point.value?.int64Value != null) {
+                    totalCount += int.parse(point.value!.int64Value!);
+                  }
+                }
+              }
+            }
           }
+          return totalCount;
+        } catch (e) {
+          debugPrint("Ошибка сбора метрики $metricType: $e");
+          return 0; // Если метрик за сегодня еще нет, возвращаем 0
         }
-        return 0;
       }
 
       // 5. Собираем данные
@@ -207,4 +218,5 @@ class MonitoringService {
     }
   }
 }
+
 
