@@ -172,22 +172,14 @@ class MonitoringService {
 
       // 4. Функция для запроса конкретной метрики
       Future<int> fetchMetric(String metricType) async {
-        final request = monitoring.ListTimeSeriesRequest()
-          ..filter = 'metric.type="firestore.googleapis.com/document/$metricType"'
-          ..interval = (monitoring.TimeInterval()
-            ..startTime = startTime
-            ..endTime = endTime)
-          ..aggregation = (monitoring.Aggregation()
-            ..alignmentPeriod = '86400s' // За день
-            ..perSeriesAligner = 'ALIGN_SUM');
-
+        // Мы передаем параметры фильтрации напрямую в функцию list()
         final response = await monitoringApi.projects.timeSeries.list(
           'projects/$projectId',
-          filter: request.filter,
-          interval_startTime: request.interval!.startTime,
-          interval_endTime: request.interval!.endTime,
-          aggregation_alignmentPeriod: request.aggregation!.alignmentPeriod,
-          aggregation_perSeriesAligner: request.aggregation!.perSeriesAligner,
+          filter: 'metric.type="firestore.googleapis.com/document/$metricType"',
+          interval_startTime: startTime,
+          interval_endTime: endTime,
+          aggregation_alignmentPeriod: '86400s', // Окно группировки: 1 день
+          aggregation_perSeriesAligner: 'ALIGN_SUM', // Суммируем все запросы
         );
 
         if (response.timeSeries != null && response.timeSeries!.isNotEmpty) {
