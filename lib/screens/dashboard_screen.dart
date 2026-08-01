@@ -16,6 +16,7 @@ import 'tasks_screen.dart';
 import 'bulk_push_screen.dart'; 
 import 'admin_notes_screen.dart';
 import 'content_manager_screen.dart';
+import 'stats_screen.dart'; // Подключили новый экран мониторинга лимитов
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -143,8 +144,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
           Divider(height: 1, color: isDark ? Colors.grey[800] : Colors.grey[300]),
+          
           if (_myRole == 'Владелец')
-            SafeArea(top: false, child: ListTile(tileColor: isDark ? Colors.red[900]?.withOpacity(0.2) : Colors.red[50], leading: Icon(Icons.delete_sweep, color: isDark ? Colors.red[300] : Colors.red), title: Text('Очистка базы данных', style: TextStyle(color: isDark ? Colors.red[300] : Colors.red, fontWeight: FontWeight.bold, fontSize: 15)), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const DatabaseCleanupScreen())); })),
+            SafeArea(
+              top: false, 
+              child: Column(
+                children: [
+                  ListTile(
+                    tileColor: isDark ? Colors.teal[900]?.withOpacity(0.2) : Colors.teal[50], 
+                    leading: Icon(Icons.data_usage, color: isDark ? Colors.teal[300] : Colors.teal), 
+                    title: Text('Лимиты и Расходы БД', style: TextStyle(color: isDark ? Colors.teal[300] : Colors.teal, fontWeight: FontWeight.bold, fontSize: 15)), 
+                    onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const StatsScreen())); }
+                  ),
+                  ListTile(
+                    tileColor: isDark ? Colors.red[900]?.withOpacity(0.2) : Colors.red[50], 
+                    leading: Icon(Icons.delete_sweep, color: isDark ? Colors.red[300] : Colors.red), 
+                    title: Text('Очистка базы данных', style: TextStyle(color: isDark ? Colors.red[300] : Colors.red, fontWeight: FontWeight.bold, fontSize: 15)), 
+                    onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const DatabaseCleanupScreen())); }
+                  ),
+                ],
+              )
+            ),
         ],
       ),
     );
@@ -280,3 +300,4 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
+
