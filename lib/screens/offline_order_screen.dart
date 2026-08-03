@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/services.dart'; // Добавлен импорт для TextInputFormatter
 
 class OfflineOrderScreen extends StatefulWidget {
   const OfflineOrderScreen({super.key});
@@ -204,12 +205,32 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
                     ),
                     const SizedBox(height: 12),
 
-                    // --- 1. НОМЕР ТЕЛЕФОНА С УМНЫМ ПОИСКОМ ---
+                    // --- 1. НОМЕР ТЕЛЕФОНА СО СМАРТ-ВСТАВКОЙ ---
                     TextFormField(
                       controller: _phoneController,
-                      keyboardType: TextInputType.number,
+                      keyboardType: TextInputType.phone,
                       maxLength: 8,
                       style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                      // Умный фильтр для вставки из буфера обмена (очищает +993, 993, 8)
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly, // Оставляем только цифры (убирает плюсы и пробелы)
+                        TextInputFormatter.withFunction((oldValue, newValue) {
+                          String text = newValue.text;
+                          if (text.startsWith('993') && text.length > 3) {
+                            text = text.substring(3);
+                          } else if (text.startsWith('8') && text.length > 1) {
+                            text = text.substring(1);
+                          }
+                          // Если после обрезки осталось больше 8 цифр, берем последние 8
+                          if (text.length > 8) {
+                            text = text.substring(text.length - 8);
+                          }
+                          return TextEditingValue(
+                            text: text,
+                            selection: TextSelection.collapsed(offset: text.length),
+                          );
+                        }),
+                      ],
                       decoration: InputDecoration(
                         labelText: 'Номер телефона',
                         labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
@@ -238,7 +259,6 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
                       validator: (val) {
                         if (val == null || val.isEmpty) return 'Введите номер телефона';
                         if (val.length != 8) return 'Введите ровно 8 цифр (без +993)';
-                        if (int.tryParse(val) == null) return 'Допускаются только цифры';
                         
                         final validCodes = ['60', '61', '62', '63', '64', '65', '71', '72'];
                         final code = val.substring(0, 2);
@@ -434,3 +454,4 @@ class _OfflineOrderScreenState extends State<OfflineOrderScreen> {
     );
   }
 }
+
