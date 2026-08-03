@@ -17,7 +17,9 @@ import 'bulk_push_screen.dart';
 import 'admin_notes_screen.dart';
 import 'content_manager_screen.dart';
 import 'stats_screen.dart'; 
-import '../main.dart'; // Предполагаем, что LoginScreen лежит там или измени на правильный путь
+
+// Правильный импорт экрана входа (он лежит в той же папке screens)
+import 'login_screen.dart'; 
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -114,16 +116,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
 
     if (confirm == true) {
-      // Очищаем локальные данные, которые ты используешь для авторизации
+      // Очищаем локальные данные авторизации
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('employee_phone'); 
       
       if (!mounted) return;
       
-      // Возвращаем на экран входа (Убедись, что импорт правильный. Замени 'LoginScreen' на имя твоего экрана, если оно отличается)
+      // БЕЗ слова const перед LoginScreen(), чтобы избежать ошибки Not a constant expression
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (context) => const LoginScreen()), 
+        MaterialPageRoute(builder: (context) => LoginScreen()), 
         (route) => false,
       );
     }
@@ -350,3 +352,4 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
+
