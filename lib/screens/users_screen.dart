@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'private_chat_screen.dart'; 
 import 'import_clients_screen.dart';
 import 'client_profile_screen.dart'; 
+import 'package:intl/intl.dart'; // Нужно для форматирования даты
 
 class UsersScreen extends StatefulWidget {
   final int tabType;
@@ -21,7 +22,6 @@ class UsersScreen extends StatefulWidget {
 }
 
 class _UsersScreenState extends State<UsersScreen> {
-  // Контроллер для умного поиска
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
@@ -31,7 +31,6 @@ class _UsersScreenState extends State<UsersScreen> {
     super.dispose();
   }
 
-  // --- ЛОГИКА ЗВОНКА ---
   Future<void> _makePhoneCall(String phoneNumber) async {
     final Uri launchUri = Uri(
       scheme: 'tel',
@@ -113,7 +112,6 @@ class _UsersScreenState extends State<UsersScreen> {
     );
   }
 
-  // --- ЛОГИКА ГЛУБОКОГО УДАЛЕНИЯ КЛИЕНТА (DEEP DELETE) ---
   Future<void> _deepDeleteClient(String docId, String name) async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -144,22 +142,17 @@ class _UsersScreenState extends State<UsersScreen> {
       final clientRef = FirebaseFirestore.instance.collection('clients').doc(docId);
       final batch = FirebaseFirestore.instance.batch();
 
-      // 1. Находим и удаляем историю бонусов
       final bonusHistory = await clientRef.collection('bonus_history').get();
       for (var doc in bonusHistory.docs) {
         batch.delete(doc.reference);
       }
 
-      // 2. Находим и удаляем служебные заметки
       final comments = await clientRef.collection('comments').get();
       for (var doc in comments.docs) {
         batch.delete(doc.reference);
       }
 
-      // 3. Удаляем сам профиль клиента
       batch.delete(clientRef);
-
-      // Запускаем массовое удаление
       await batch.commit();
 
       if (mounted) {
@@ -200,7 +193,6 @@ class _UsersScreenState extends State<UsersScreen> {
     }
   }
 
-  // --- ЛОГИКА ДОБАВЛЕНИЯ ОФФЛАЙН КЛИЕНТА ВРУЧНУЮ ---
   void _showAddOfflineClientDialog() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final nameController = TextEditingController();
@@ -327,6 +319,12 @@ class _UsersScreenState extends State<UsersScreen> {
     );
   }
 
+  // Вспомогательная функция для красивого формата даты
+  String _formatDate(Timestamp? timestamp) {
+    if (timestamp == null) return 'Неизвестно';
+    return DateFormat('dd.MM.yyyy HH:mm').format(timestamp.toDate());
+  }
+
   Widget _buildUsersList(bool isDark) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('clients').snapshots(),
@@ -344,7 +342,7 @@ class _UsersScreenState extends State<UsersScreen> {
           final isApproved = data['is_approved'] == true;
           final isOffline = data['is_offline'] == true;
 
-          // 1. Фильтр по вкладкам
+          // ФИЛЬТРАЦИЯ ПО ВКЛАДКАМ (0 - Ждут, 1 - Оффлайн, 2 - С приложением, 3 - Отклоненные)
           bool matchesTab = false;
           if (widget.tabType == 0) matchesTab = !isApproved && reason == null && !isOffline; 
           if (widget.tabType == 1) matchesTab = isOffline; 
@@ -353,14 +351,14 @@ class _UsersScreenState extends State<UsersScreen> {
 
           if (!matchesTab) return false;
 
-          // 2. Фильтр по строке УМНОГО ПОИСКА
+          // УМНЫЙ ПОИСК
           if (_searchQuery.isNotEmpty) {
             final query = _searchQuery.toLowerCase();
             final phone = (data['phone'] ?? '').toLowerCase();
             final name = (data['name'] ?? '').toLowerCase();
             
             if (!phone.contains(query) && !name.contains(query)) {
-              return false; // Если не совпало ни имя, ни телефон - скрываем
+              return false; 
             }
           }
 
@@ -401,6 +399,11 @@ class _UsersScreenState extends State<UsersScreen> {
             
             final phone = data['phone'] ?? '';
             final name = data['name'] ?? 'Без имени';
+            final lastSeen = data['last_seen'] as Timestamp?;
+            final fcmToken = data['fcm_token'] as String?;
+            
+            // Проверка: удалил ли человек приложение (нет токена, но он в табе "С приложением")
+            final bool hasDeletedApp = isActive && (fcmToken == null || fcmToken.isEmpty);
 
             List<Widget> trailingActions = [];
 
@@ -439,7 +442,6 @@ class _UsersScreenState extends State<UsersScreen> {
               );
             }
 
-            // Добавляем Кнопку Глубокого Удаления во все вкладки
             trailingActions.add(
               IconButton(
                 icon: Icon(Icons.delete_forever, color: isDark ? Colors.red[400] : Colors.red[700]),
@@ -454,7 +456,7 @@ class _UsersScreenState extends State<UsersScreen> {
               margin: const EdgeInsets.only(bottom: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: isDark ? Colors.grey[800]! : Colors.transparent)
+                side: BorderSide(color: hasDeletedApp ? Colors.red.withOpacity(0.5) : (isDark ? Colors.grey[800]! : Colors.transparent))
               ),
               child: InkWell(
                 onTap: () {
@@ -483,7 +485,19 @@ class _UsersScreenState extends State<UsersScreen> {
                         color: isActive ? Colors.green : (isRejected ? Colors.red : (isOfflineTab ? Colors.grey : Colors.orange)),
                       ),
                     ),
-                    title: Text(name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : Colors.black87)),
+                    title: RichText(
+                      text: TextSpan(
+                        text: name,
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : Colors.black87),
+                        children: [
+                          if (hasDeletedApp)
+                            const TextSpan(
+                              text: ' (Удалил App)',
+                              style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.normal),
+                            ),
+                        ]
+                      )
+                    ),
                     subtitle: Padding(
                       padding: const EdgeInsets.only(top: 8.0),
                       child: Column(
@@ -496,6 +510,19 @@ class _UsersScreenState extends State<UsersScreen> {
                               Text(phone, style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 14)),
                             ],
                           ),
+                          
+                          // НОВОЕ: ОТОБРАЖЕНИЕ LAST_SEEN (ДАТА ПОСЛЕДНЕГО ВХОДА)
+                          if (isActive && lastSeen != null) ...[
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                Icon(Icons.access_time, size: 16, color: isDark ? Colors.grey[400] : Colors.blueGrey),
+                                const SizedBox(width: 6),
+                                Text('Был(а): ${_formatDate(lastSeen)}', style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600], fontSize: 12)),
+                              ],
+                            ),
+                          ],
+
                           const SizedBox(height: 6),
                           if (isPending)
                             Row(
