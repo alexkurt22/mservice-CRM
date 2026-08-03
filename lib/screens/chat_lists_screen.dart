@@ -3,7 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'private_chat_screen.dart'; 
 
+// ============================================================================
 // 1. ЭКРАН СПИСКА ЧАТОВ С КЛИЕНТАМИ
+// ============================================================================
 class ClientChatsListScreen extends StatefulWidget {
   const ClientChatsListScreen({super.key});
 
@@ -84,11 +86,11 @@ class _ClientChatsListScreenState extends State<ClientChatsListScreen> {
                 clientPhone = participants.firstWhere((p) => p != _myPhone, orElse: () => participants.last).toString();
               }
 
-              // ❗ ЛОГИКА БЕЙДЖИКОВ ❗
+              // ЛОГИКА БЕЙДЖИКОВ (КЛИЕНТЫ)
               int unreadCount = data['unread_count'] as int? ?? 0;
               bool isClientSender = data['last_sender'] != _myPhone;
 
-              // ❗ ИЩЕМ ИМЯ КЛИЕНТА В БАЗЕ ❗
+              // ИЩЕМ ИМЯ КЛИЕНТА В БАЗЕ
               return FutureBuilder<QuerySnapshot>(
                 future: FirebaseFirestore.instance.collection('clients').where('phone', isEqualTo: clientPhone).limit(1).get(),
                 builder: (context, clientSnapshot) {
@@ -162,15 +164,34 @@ class _ClientChatsListScreenState extends State<ClientChatsListScreen> {
   }
 }
 
-// 2. ЭКРАН СПИСКА СОТРУДНИКОВ
-class TeamChatsListScreen extends StatelessWidget {
+// ============================================================================
+// 2. ЭКРАН СПИСКА ЧАТОВ СОТРУДНИКОВ (КОМАНДА)
+// ============================================================================
+class TeamChatsListScreen extends StatefulWidget {
   const TeamChatsListScreen({super.key});
 
-  Future<void> _startChatWithEmployee(BuildContext context, String empPhone, String empName) async {
+  @override
+  State<TeamChatsListScreen> createState() => _TeamChatsListScreenState();
+}
+
+class _TeamChatsListScreenState extends State<TeamChatsListScreen> {
+  String _myPhone = 'admin';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMyPhone();
+  }
+
+  Future<void> _loadMyPhone() async {
     final prefs = await SharedPreferences.getInstance();
-    final myPhone = prefs.getString('employee_phone') ?? 'admin';
-    
-    List<String> participants = [myPhone, empPhone];
+    setState(() {
+      _myPhone = prefs.getString('employee_phone') ?? 'admin';
+    });
+  }
+
+  Future<void> _startChatWithEmployee(BuildContext context, String empPhone, String empName) async {
+    List<String> participants = [_myPhone, empPhone];
     participants.sort();
     String roomId = 'team_${participants[0]}_${participants[1]}';
 
@@ -192,32 +213,40 @@ class TeamChatsListScreen extends StatelessWidget {
     }
   }
 
+  // Вспомогательная функция для генерации ID комнаты
+  String _getRoomId(String phone1, String phone2) {
+    List<String> p = [phone1, phone2];
+    p.sort();
+    return 'team_${p[0]}_${p[1]}';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Чат команды'), backgroundColor: Colors.orange[600], foregroundColor: Colors.white),
+      appBar: AppBar(
+        title: const Text('Чат команды'), 
+        backgroundColor: Colors.orange[600], 
+        foregroundColor: Colors.white
+      ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('employees').snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
           
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.group_off, size: 64, color: Colors.blueGrey[200]),
-                  const SizedBox(height: 16),
-                  Text('Нет сотрудников', style: TextStyle(color: Colors.blueGrey[600], fontSize: 16, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  const Text('В базе данных пока пусто.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 13)),
-                ],
-              ),
-            );
+            return _buildEmptyState();
           }
 
-          final employees = snapshot.data!.docs;
+          // ФИЛЬТРАЦИЯ: Исключаем свой собственный номер из списка
+          final employees = snapshot.data!.docs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            return data['phone'] != _myPhone;
+          }).toList();
           
+          if (employees.isEmpty) {
+             return _buildEmptyState();
+          }
+
           return ListView.builder(
             padding: EdgeInsets.only(top: 8.0, left: 8.0, right: 8.0, bottom: MediaQuery.of(context).padding.bottom + 20),
             itemCount: employees.length,
@@ -226,17 +255,48 @@ class TeamChatsListScreen extends StatelessWidget {
               final String empName = data['name'] ?? 'Сотрудник';
               final String empPhone = data['phone'] ?? '';
               
-              return Card(
-                elevation: 1,
-                margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: ListTile(
-                  leading: const CircleAvatar(backgroundColor: Colors.orange, child: Icon(Icons.person, color: Colors.white)),
-                  title: Text(empName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text(empPhone),
-                  trailing: const Icon(Icons.chevron_right, color: Colors.blueGrey),
-                  onTap: () => _startChatWithEmployee(context, empPhone, empName),
-                ),
+              String roomId = _getRoomId(_myPhone, empPhone);
+
+              // StreamBuilder для проверки непрочитанных сообщений ИМЕННО с этим сотрудником
+              return StreamBuilder<DocumentSnapshot>(
+                stream: FirebaseFirestore.instance.collection('chat_rooms').doc(roomId).snapshots(),
+                builder: (context, roomSnapshot) {
+                  int unreadCount = 0;
+                  bool isOtherSender = false;
+                  String lastMsg = 'Начать переписку';
+
+                  if (roomSnapshot.hasData && roomSnapshot.data!.exists) {
+                    final roomData = roomSnapshot.data!.data() as Map<String, dynamic>;
+                    unreadCount = roomData['unread_count'] as int? ?? 0;
+                    isOtherSender = roomData['last_sender'] != _myPhone;
+                    lastMsg = roomData['last_message'] ?? 'Начать переписку';
+                  }
+
+                  return Card(
+                    elevation: 1,
+                    margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    child: ListTile(
+                      leading: Badge(
+                        isLabelVisible: isOtherSender && unreadCount > 0,
+                        label: Text(unreadCount.toString()),
+                        child: const CircleAvatar(
+                          backgroundColor: Colors.orange, 
+                          child: Icon(Icons.person, color: Colors.white)
+                        ),
+                      ),
+                      title: Text(empName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: Text(
+                        lastMsg, 
+                        maxLines: 1, 
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Colors.grey[600])
+                      ),
+                      trailing: const Icon(Icons.chevron_right, color: Colors.blueGrey),
+                      onTap: () => _startChatWithEmployee(context, empPhone, empName),
+                    ),
+                  );
+                }
               );
             },
           );
@@ -244,4 +304,20 @@ class TeamChatsListScreen extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.group_off, size: 64, color: Colors.blueGrey[200]),
+          const SizedBox(height: 16),
+          Text('Нет других сотрудников', style: TextStyle(color: Colors.blueGrey[600], fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          const Text('В базе данных пока нет других добавленных коллег.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 13)),
+        ],
+      ),
+    );
+  }
 }
+
