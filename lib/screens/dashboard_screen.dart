@@ -17,6 +17,7 @@ import 'bulk_push_screen.dart';
 import 'admin_notes_screen.dart';
 import 'content_manager_screen.dart';
 import 'stats_screen.dart'; 
+import '../main.dart'; // Предполагаем, что LoginScreen лежит там или измени на правильный путь
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -90,7 +91,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  // --- ФУНКЦИЯ БЕЗОПАСНОГО ВЫХОДА С ПОДТВЕРЖДЕНИЕМ ---
+  // --- ФУНКЦИЯ БЕЗОПАСНОГО ВЫХОДА БЕЗ FIREBASE AUTH ---
   Future<void> _signOut() async {
     final bool? confirm = await showDialog<bool>(
       context: context,
@@ -113,17 +114,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
 
     if (confirm == true) {
+      // Очищаем локальные данные, которые ты используешь для авторизации
       final prefs = await SharedPreferences.getInstance();
-      await prefs.clear();
-      await FirebaseAuth.instance.signOut();
-      // Перенаправление на экран логина (если используется навигация по роутам)
+      await prefs.remove('employee_phone'); 
+      
+      if (!mounted) return;
+      
+      // Возвращаем на экран входа (Убедись, что импорт правильный. Замени 'LoginScreen' на имя твоего экрана, если оно отличается)
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginScreen()), 
+        (route) => false,
+      );
     }
   }
 
   Widget _buildDrawer(BuildContext context, bool isDark) {
     return Drawer(
       backgroundColor: Theme.of(context).cardColor,
-      child: SafeArea( // Защита от системных элементов сверху и снизу
+      child: SafeArea( 
         child: Column(
           children: [
             UserAccountsDrawerHeader(
@@ -192,7 +201,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ],
               ),
 
-            // --- КНОПКА ВЫХОДА ДЛЯ ВСЕХ СОТРУДНИКОВ ---
+            // --- КНОПКА ВЫХОДА ДЛЯ ВСЕХ ---
             Divider(height: 1, color: isDark ? Colors.grey[800] : Colors.grey[300]),
             ListTile(
               leading: const Icon(Icons.exit_to_app, color: Colors.red),
