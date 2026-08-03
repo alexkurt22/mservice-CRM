@@ -510,7 +510,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         'price': priceStr,
         'paid_amount': paid.toString(),
         'debt_amount': debt.toString(),
-        'payment_method': paymentMethod, // Сохраняем реальный тип оплаты (Нал, Карта, Перечисление)
+        'payment_method': paymentMethod, 
         'added_refills': refills,
         'completed_at': FieldValue.serverTimestamp(),
         'has_unread_update': true,
@@ -536,6 +536,113 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  // --- НОВОЕ: ЛОГИКА ОТМЕНЫ ЗАКАЗА С ПРИЧИНОЙ ---
+  void _showCancelOrderDialog() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    String selectedReason = 'Клиент отказался';
+    final customReasonController = TextEditingController();
+    
+    final predefinedReasons = [
+      'Клиент отказался',
+      'Нет нужных запчастей',
+      'Не удалось связаться с клиентом',
+      'Не устроила цена',
+      'Отказ от предоплаты',
+      'Другое (указать вручную)'
+    ];
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) {
+          return AlertDialog(
+            backgroundColor: Theme.of(context).cardColor,
+            title: Text('Отмена заказа', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red[400])),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Укажите причину отмены заказа. Это действие нельзя отменить.', style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : Colors.blueGrey)),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: selectedReason,
+                  dropdownColor: Theme.of(context).cardColor,
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                  decoration: InputDecoration(
+                    labelText: 'Причина отмены',
+                    labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
+                    border: const OutlineInputBorder(),
+                  ),
+                  items: predefinedReasons.map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
+                  onChanged: (val) {
+                    if (val != null) setModalState(() => selectedReason = val);
+                  },
+                ),
+                if (selectedReason == 'Другое (указать вручную)') ...[
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: customReasonController,
+                    style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                    decoration: InputDecoration(
+                      labelText: 'Опишите причину',
+                      labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
+                      border: const OutlineInputBorder(),
+                    ),
+                    maxLines: 2,
+                  ),
+                ]
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Назад', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red[600], foregroundColor: Colors.white),
+                onPressed: () {
+                  String finalReason = selectedReason;
+                  if (selectedReason == 'Другое (указать вручную)') {
+                    finalReason = customReasonController.text.trim();
+                    if (finalReason.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Опишите причину отмены'), backgroundColor: Colors.red));
+                      return;
+                    }
+                  }
+                  Navigator.pop(ctx);
+                  _processCancelOrder(finalReason);
+                },
+                child: const Text('ОТМЕНИТЬ ЗАКАЗ', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        }
+      ),
+    );
+  }
+
+  Future<void> _processCancelOrder(String reason) async {
+    setState(() => _isLoading = true);
+    try {
+      await FirebaseFirestore.instance.collection('orders').doc(widget.orderId).update({
+        'status': 'canceled',
+        'cancel_reason': reason, // Сохраняем причину отмены
+        'canceled_at': FieldValue.serverTimestamp(),
+        'has_unread_update': true,
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Заказ успешно отменен'), backgroundColor: Colors.orange));
+        Navigator.pop(context); // Возвращаемся на предыдущий экран
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка отмены: $e'), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
 
   Future<void> _updateStatus(String newStatus, {bool isAwaitingApproval = false, bool isBargainingMode = false}) async {
     setState(() => _isLoading = true);
@@ -795,13 +902,20 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         foregroundColor: Colors.white,
         title: const Text('Детали заказа', style: TextStyle(fontSize: 18)),
         actions: [
-          // --- УНИВЕРСАЛЬНАЯ КНОПКА БЫСТРОГО ЗАКРЫТИЯ (РАСЧЕТА) ИЗ ЛЮБОГО СТАТУСА ---
+          // Кнопка ОТМЕНЫ ЗАКАЗА
+          if (status != 'completed' && status != 'canceled')
+            IconButton(
+              tooltip: 'Отменить заказ',
+              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+              onPressed: _showCancelOrderDialog,
+            ),
+          // Кнопка ЗАКРЫТИЯ ЗАКАЗА
           if (status != 'completed' && status != 'canceled')
             TextButton.icon(
               style: TextButton.styleFrom(foregroundColor: Colors.white),
               onPressed: _showCompletionDialog,
               icon: const Icon(Icons.task_alt, color: Colors.greenAccent),
-              label: const Text('Закрыть заказ', style: TextStyle(fontWeight: FontWeight.bold)),
+              label: const Text('Закрыть', style: TextStyle(fontWeight: FontWeight.bold)),
             ),
         ],
       ),
@@ -1085,13 +1199,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                       const SizedBox(height: 8),
                       Text('Стоимость: ${widget.orderData['price'] ?? 'Не указана'} TMT', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
                     ],
-                    const SizedBox(height: 24),
-                    TextButton.icon(
-                      style: TextButton.styleFrom(foregroundColor: Colors.red),
-                      onPressed: () => _updateStatus('canceled'),
-                      icon: const Icon(Icons.cancel),
-                      label: const Text('Принудительно отозвать заказ'),
-                    ),
                   ],
 
                   if (status == 'in_progress') ...[
@@ -1109,17 +1216,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     const SizedBox(height: 16),
                     _buildAuditTrail(widget.orderData, isDark),
                     const SizedBox(height: 32),
-                    
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green[600],
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: _showCompletionDialog,
-                      icon: const Icon(Icons.task_alt, color: Colors.white),
-                      label: const Text('РЕМОНТ ЗАВЕРШЕН (ВЫДАТЬ)', style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
-                    ),
                   ],
 
                   if (status == 'completed') ...[
@@ -1147,7 +1243,16 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                           children: [
                             const Icon(Icons.error_outline, color: Colors.red, size: 28),
                             const SizedBox(width: 12),
-                            Expanded(child: Text('Заказ отменен (клиентом или администратором)', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.red[300] : Colors.red, fontSize: 16))),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Заказ отменен', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.red[300] : Colors.red, fontSize: 16)),
+                                  if (widget.orderData['cancel_reason'] != null)
+                                    Text('Причина: ${widget.orderData['cancel_reason']}', style: TextStyle(color: isDark ? Colors.red[200] : Colors.red[800], fontSize: 14)),
+                                ],
+                              )
+                            ),
                           ],
                         ),
                       ),
