@@ -1,13 +1,10 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mservice_crm/services/fcm_service.dart';
-import 'package:just_audio/just_audio.dart';
-import 'package:path_provider/path_provider.dart';
 import 'client_profile_screen.dart'; 
 
 class OrderDetailsScreen extends StatefulWidget {
@@ -35,46 +32,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   ];
   
   bool _isLoading = false;
-  bool _isBargaining = false; 
-
-  // --- АУДИО ПЛЕЕР ---
-  final AudioPlayer _audioPlayer = AudioPlayer();
-  bool _isPlaying = false;
-  String? _tempAudioPath;
-
-  @override
-  void initState() {
-    super.initState();
-    _initAudioPlayer();
-  }
-
-  Future<void> _initAudioPlayer() async {
-    _audioPlayer.playerStateStream.listen((state) {
-      if (mounted) {
-        setState(() {
-          _isPlaying = state.playing && state.processingState != ProcessingState.completed;
-        });
-        if (state.processingState == ProcessingState.completed) {
-           _audioPlayer.stop();
-           _audioPlayer.seek(Duration.zero);
-        }
-      }
-    });
-
-    // Если есть аудио в базе, декодируем и готовим файл
-    if (widget.orderData['audio_base64'] != null) {
-      try {
-        final bytes = base64Decode(widget.orderData['audio_base64']);
-        final dir = await getTemporaryDirectory();
-        final file = File('${dir.path}/temp_audio_${widget.orderId}.aac');
-        await file.writeAsBytes(bytes);
-        _tempAudioPath = file.path;
-        await _audioPlayer.setFilePath(_tempAudioPath!);
-      } catch (e) {
-        print("Ошибка загрузки аудио: $e");
-      }
-    }
-  }
+  bool _isBargainingMode = false; 
 
   @override
   void dispose() {
@@ -82,7 +40,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       opt['description']?.dispose();
       opt['price']?.dispose();
     }
-    _audioPlayer.dispose();
     super.dispose();
   }
 
@@ -274,6 +231,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       await FirebaseFirestore.instance.collection('orders').doc(widget.orderId).update({
         'assigned_to': empPhone,
         'assigned_name': empName,
+        'has_unread_update': true,
       });
 
       final prefs = await SharedPreferences.getInstance();
@@ -412,12 +370,14 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
+  // --- УНИВЕРСАЛЬНОЕ ОКНО ЗАВЕРШЕНИЯ И РАСЧЕТА (С КАССАМИ И ОПЛАТОЙ) ---
   Future<void> _showCompletionDialog() async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final initialPrice = widget.orderData['price']?.toString() ?? '';
     final priceController = TextEditingController(text: initialPrice);
     final paidController = TextEditingController(text: initialPrice); 
     int refillsCount = 0;
+    String selectedPaymentMethod = 'Наличные'; // Наличные, Карта/Терминал, Перечисление
 
     await showDialog(
       context: context,
@@ -426,14 +386,35 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         builder: (context, setStateDialog) {
           return AlertDialog(
             backgroundColor: Theme.of(context).cardColor,
-            title: Text('Выдача заказа', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+            title: Text('Выдача и расчет заказа', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('1. ФИНАНСЫ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDark ? Colors.white70 : Colors.blueGrey)),
+                  Text('1. ФИНАНСЫ И ОПЛАТА', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDark ? Colors.white70 : Colors.blueGrey)),
                   const SizedBox(height: 12),
+                  
+                  // Способ оплаты
+                  DropdownButtonFormField<String>(
+                    value: selectedPaymentMethod,
+                    dropdownColor: Theme.of(context).cardColor,
+                    style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                    decoration: InputDecoration(
+                      labelText: 'Способ оплаты',
+                      labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.payment, color: Colors.blue),
+                    ),
+                    items: ['Наличные', 'Карта / Терминал', 'Перечисление']
+                        .map((method) => DropdownMenuItem(value: method, child: Text(method)))
+                        .toList(),
+                    onChanged: (val) {
+                      if (val != null) setStateDialog(() => selectedPaymentMethod = val);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+
                   TextField(
                     controller: priceController,
                     keyboardType: TextInputType.number,
@@ -502,9 +483,9 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                   }
 
                   Navigator.pop(ctx);
-                  await _processOrderCompletion(priceStr, paidStr, refillsCount);
+                  await _processOrderCompletion(priceStr, paidStr, refillsCount, selectedPaymentMethod);
                 },
-                child: const Text('ВЫДАТЬ КЛИЕНТУ', style: TextStyle(fontWeight: FontWeight.bold)),
+                child: const Text('ВЫДАТЬ И ЗАКРЫТЬ', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ],
           );
@@ -513,7 +494,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     );
   }
 
-  Future<void> _processOrderCompletion(String priceStr, String paidStr, int refills) async {
+  Future<void> _processOrderCompletion(String priceStr, String paidStr, int refills, String paymentMethod) async {
     setState(() => _isLoading = true);
     try {
       double price = double.tryParse(priceStr) ?? 0;
@@ -529,6 +510,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         'price': priceStr,
         'paid_amount': paid.toString(),
         'debt_amount': debt.toString(),
+        'payment_method': paymentMethod, // Сохраняем реальный тип оплаты (Нал, Карта, Перечисление)
         'added_refills': refills,
         'completed_at': FieldValue.serverTimestamp(),
         'has_unread_update': true,
@@ -545,7 +527,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       await batch.commit();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ремонт успешно завершен!'), backgroundColor: Colors.green));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ремонт успешно завершен и выдан!'), backgroundColor: Colors.green));
         Navigator.pop(context);
       }
     } catch (e) {
@@ -554,7 +536,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
-
 
   Future<void> _updateStatus(String newStatus, {bool isAwaitingApproval = false, bool isBargainingMode = false}) async {
     setState(() => _isLoading = true);
@@ -630,12 +611,10 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
-  // --- БЛОК ОТРИСОВКИ МЕДИА-ФАЙЛОВ ---
+  // --- БЛОК ОТРИСОВКИ КАРТИНОК ---
   Widget _buildMediaAttachments(bool isDark) {
     final imageBase64 = widget.orderData['image_base64'];
-    final audioBase64 = widget.orderData['audio_base64'];
-
-    if (imageBase64 == null && audioBase64 == null) return const SizedBox.shrink();
+    if (imageBase64 == null) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -643,104 +622,43 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         const SizedBox(height: 12),
         Text('Прикрепленные файлы:', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white70 : Colors.blueGrey)),
         const SizedBox(height: 8),
-
-        if (imageBase64 != null)
-          GestureDetector(
-            onTap: () {
-              showDialog(
-                context: context,
-                builder: (_) => Dialog(
-                  backgroundColor: Colors.transparent,
-                  insetPadding: const EdgeInsets.all(10),
-                  child: InteractiveViewer(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.memory(base64Decode(imageBase64), fit: BoxFit.contain),
-                    ),
+        GestureDetector(
+          onTap: () {
+            showDialog(
+              context: context,
+              builder: (_) => Dialog(
+                backgroundColor: Colors.transparent,
+                insetPadding: const EdgeInsets.all(10),
+                child: InteractiveViewer(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.memory(base64Decode(imageBase64), fit: BoxFit.contain),
                   ),
                 ),
-              );
-            },
-            child: Container(
-              height: 150,
-              width: double.infinity,
-              margin: const EdgeInsets.only(bottom: 12),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: isDark ? Colors.grey[800]! : Colors.grey[300]!),
-                image: DecorationImage(
-                  image: MemoryImage(base64Decode(imageBase64)),
-                  fit: BoxFit.cover,
-                ),
               ),
-              child: const Align(
-                alignment: Alignment.bottomRight,
-                child: Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Icon(Icons.zoom_out_map, color: Colors.white, shadows: [Shadow(blurRadius: 5, color: Colors.black)]),
-                ),
-              ),
-            ),
-          ),
-
-        if (audioBase64 != null && _tempAudioPath != null)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            );
+          },
+          child: Container(
+            height: 150,
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 12),
             decoration: BoxDecoration(
-              color: isDark ? Colors.orange[900]?.withOpacity(0.2) : Colors.orange[50],
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: isDark ? Colors.orange[800]! : Colors.orange[200]!)
+              border: Border.all(color: isDark ? Colors.grey[800]! : Colors.grey[300]!),
+              image: DecorationImage(
+                image: MemoryImage(base64Decode(imageBase64)),
+                fit: BoxFit.cover,
+              ),
             ),
-            child: Row(
-              children: [
-                GestureDetector(
-                  onTap: () async {
-                    if (_isPlaying) {
-                      await _audioPlayer.pause();
-                    } else {
-                      await _audioPlayer.play();
-                    }
-                  },
-                  child: CircleAvatar(
-                    backgroundColor: Colors.orange,
-                    child: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: StreamBuilder<Duration>(
-                    stream: _audioPlayer.positionStream,
-                    builder: (context, snapshot) {
-                      final position = snapshot.data ?? Duration.zero;
-                      final total = _audioPlayer.duration ?? Duration.zero;
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Голосовое сообщение', style: TextStyle(fontWeight: FontWeight.bold)),
-                          SliderTheme(
-                            data: SliderTheme.of(context).copyWith(
-                              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-                              trackHeight: 3,
-                            ),
-                            child: Slider(
-                              value: position.inMilliseconds.toDouble(),
-                              max: total.inMilliseconds > 0 ? total.inMilliseconds.toDouble() : 1.0,
-                              activeColor: Colors.orange,
-                              inactiveColor: isDark ? Colors.grey[700] : Colors.orange[100],
-                              onChanged: (val) {
-                                _audioPlayer.seek(Duration(milliseconds: val.toInt()));
-                              },
-                            ),
-                          ),
-                        ],
-                      );
-                    }
-                  ),
-                ),
-              ],
+            child: const Align(
+              alignment: Alignment.bottomRight,
+              child: Padding(
+                padding: EdgeInsets.all(8.0),
+                child: Icon(Icons.zoom_out_map, color: Colors.white, shadows: [Shadow(blurRadius: 5, color: Colors.black)]),
+              ),
             ),
           ),
+        ),
       ],
     );
   }
@@ -867,7 +785,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     String status = widget.orderData['status'] ?? 'unknown';
-    String paymentMethod = widget.orderData['payment_method'] ?? 'Наличные (или не указано)';
+    String paymentMethod = widget.orderData['payment_method'] ?? 'Наличные';
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -876,6 +794,16 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         backgroundColor: isDark ? Colors.grey[900] : Colors.blueGrey[900],
         foregroundColor: Colors.white,
         title: const Text('Детали заказа', style: TextStyle(fontSize: 18)),
+        actions: [
+          // --- УНИВЕРСАЛЬНАЯ КНОПКА БЫСТРОГО ЗАКРЫТИЯ (РАСЧЕТА) ИЗ ЛЮБОГО СТАТУСА ---
+          if (status != 'completed' && status != 'canceled')
+            TextButton.icon(
+              style: TextButton.styleFrom(foregroundColor: Colors.white),
+              onPressed: _showCompletionDialog,
+              icon: const Icon(Icons.task_alt, color: Colors.greenAccent),
+              label: const Text('Закрыть заказ', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -961,12 +889,10 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                                       Expanded(child: Text('${widget.orderData['problem'] ?? 'Не указана'}', style: TextStyle(fontSize: 15, color: isDark ? Colors.white : Colors.black87))),
                                     ],
                                   ),
-                                  // ЗДЕСЬ ДОБАВЛЕНЫ МЕДИА-ФАЙЛЫ
                                   _buildMediaAttachments(isDark),
                                 ],
                               ),
                             ),
-                            // --- ОТОБРАЖЕНИЕ НАЗНАЧЕННОГО МАСТЕРА ---
                             if (widget.orderData['assigned_name'] != null) ...[
                               const SizedBox(height: 12),
                               Container(
@@ -988,7 +914,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // --- КНОПКА ПОДЕЛИТЬСЯ / ДЕЛЕГИРОВАТЬ ---
                   OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1205,7 +1130,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                         children: [
                           Icon(Icons.celebration, color: isDark ? Colors.green[300] : Colors.green, size: 28),
                           const SizedBox(width: 12),
-                          Expanded(child: Text('Ремонт успешно завершен и выдан клиенту!', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.green[300] : Colors.green, fontSize: 16))),
+                          Expanded(child: Text('Ремонт успешно завершен и выдан клиент!', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.green[300] : Colors.green, fontSize: 16))),
                         ],
                       ),
                     ),
@@ -1214,7 +1139,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                   ],
 
                   if (status == 'canceled') ...[
-                    if (!_isBargaining) ...[
+                    if (!_isBargainingMode) ...[
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(color: Colors.red[900]?.withOpacity(0.2), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.red[300]!)),
@@ -1255,7 +1180,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                         ),
                         onPressed: () {
                           setState(() {
-                            _isBargaining = true;
+                            _isBargainingMode = true;
                             _options.clear();
                             _options.add({'description': TextEditingController(), 'price': TextEditingController()});
                           });
@@ -1347,7 +1272,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                       ),
                       const SizedBox(height: 8),
                       TextButton(
-                        onPressed: () => setState(() => _isBargaining = false),
+                        onPressed: () => setState(() => _isBargainingMode = false),
                         child: const Text('Отмена', style: TextStyle(color: Colors.grey, fontSize: 16)),
                       ),
                     ]
