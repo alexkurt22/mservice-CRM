@@ -8,7 +8,7 @@ import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 
 import 'users_screen.dart';
 import 'orders_screen.dart';
-import 'database_cleanup_screen.dart'; // <--- ВОТ ЭТОТ ИМПОРТ ВЕРНУЛСЯ
+import 'database_cleanup_screen.dart'; 
 import 'settings_screen.dart'; 
 import 'chat_lists_screen.dart'; 
 import 'statistics_screen.dart';
@@ -16,6 +16,7 @@ import 'tasks_screen.dart';
 import 'bulk_push_screen.dart'; 
 import 'admin_notes_screen.dart';
 import 'content_manager_screen.dart';
+import 'store_management_screen.dart'; // <--- ДОБАВЛЕН ИМПОРТ МАГАЗИНА
 import 'login_screen.dart'; 
 
 class DashboardScreen extends StatefulWidget {
@@ -172,6 +173,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ListTile(leading: Icon(Icons.edit_note, color: isDark ? Colors.white70 : Colors.blueGrey[700]), title: Text('Заметки', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminNotesScreen())); }),
                   
                   if (_hasPermission('manage_settings')) ...[
+                    // --- КНОПКА МАГАЗИНА ---
+                    ListTile(leading: Icon(Icons.storefront, color: isDark ? Colors.green[300] : Colors.green[700]), title: Text('Магазин и Склад', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const StoreManagementScreen())); }),
+                    
                     ListTile(leading: Icon(Icons.dynamic_feed, color: isDark ? Colors.pink[300] : Colors.pink[600]), title: Text('Контент и Новости', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const ContentManagerScreen())); }),
                     ListTile(leading: Icon(Icons.settings, color: isDark ? Colors.white70 : Colors.blueGrey[700]), title: Text('Настройки', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())); }),
                   ]
