@@ -27,7 +27,6 @@ dependencies:
   just_audio: ^0.9.36
   google_generative_ai: ^0.4.3
   mobile_scanner: ^5.0.3
-  image_cropper: ^7.1.0
   path_provider: ^2.1.2
   flutter_sound: ^9.2.13
   permission_handler: ^11.3.1
