@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
+import 'package:simple_barcode_scanner/simple_barcode_scanner.dart';
+import 'package:google_generative_ai/google_generative_ai.dart';
 
 class StoreManagementScreen extends StatefulWidget {
   const StoreManagementScreen({super.key});
@@ -25,19 +28,89 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
     final barcodeController = TextEditingController();
     final descController = TextEditingController();
     
-    String condition = 'Новый'; // Новый или Б/У
+    String condition = 'Новый'; 
     File? selectedImage;
     bool isSaving = false;
+    bool isGeneratingAI = false;
 
-    Future<void> pickImage(StateSetter setModalState) async {
+    // --- ФУНКЦИЯ ВЫБОРА И ОБРЕЗКИ ФОТО (КВАДРАТ 1:1) ---
+    Future<void> pickAndCropImage(StateSetter setModalState) async {
       try {
         final picker = ImagePicker();
-        final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70, maxWidth: 1000);
+        final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+        
         if (pickedFile != null) {
-          setModalState(() => selectedImage = File(pickedFile.path));
+          CroppedFile? croppedFile = await ImageCropper().cropImage(
+            sourcePath: pickedFile.path,
+            aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1), // СТРОГИЙ КВАДРАТ
+            uiSettings: [
+              AndroidUiSettings(
+                  toolbarTitle: 'Кадрирование',
+                  toolbarColor: isDark ? Colors.grey[900] : Colors.blueGrey[900],
+                  toolbarWidgetColor: Colors.white,
+                  initAspectRatio: CropAspectRatioPreset.square,
+                  lockAspectRatio: true),
+              IOSUiSettings(
+                title: 'Кадрирование',
+                aspectRatioLockEnabled: true,
+                resetAspectRatioEnabled: false,
+              ),
+            ],
+          );
+
+          if (croppedFile != null) {
+            setModalState(() => selectedImage = File(croppedFile.path));
+          }
         }
       } catch (e) {
         debugPrint('Ошибка выбора фото: $e');
+      }
+    }
+
+    // --- ФУНКЦИЯ РАСПОЗНАВАНИЯ ТОВАРА ПО ФОТО И ГЕНЕРАЦИИ ОПИСАНИЯ ---
+    Future<void> generateDescriptionWithAI(StateSetter setModalState) async {
+      setModalState(() => isGeneratingAI = true);
+
+      try {
+        // !!! ВСТАВЬ СВОЙ КЛЮЧ ОТ GOOGLE AI STUDIO СЮДА !!!
+        const apiKey = 'AQ.Ab8RN6K7e2RvnnhmLv-rBAcTr_6r4qG9ifeiZQFWxcv4_TWPEw'; 
+        
+        // Используем модель, которая понимает и текст, и картинки
+        final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: apiKey);
+        
+        String prompt = 'Напиши красивое, короткое и продающее описание для этого товара. Укажи его вероятные преимущества для покупателя. Текст на русском языке, без воды, буквально 3-4 предложения для интернет-магазина.';
+        
+        // Если пользователь уже ввел название товара, добавляем его в промпт
+        if (nameController.text.trim().isNotEmpty) {
+          prompt += ' Товар называется: "${nameController.text.trim()}".';
+        } else {
+          prompt += ' Также определи, что это за товар, и напиши его название в самом начале описания.';
+        }
+
+        List<Content> content = [];
+        
+        // Если есть картинка, отправляем её вместе с текстом!
+        if (selectedImage != null) {
+           final imageBytes = await selectedImage!.readAsBytes();
+           content.add(Content.multi([
+             TextPart(prompt),
+             DataPart('image/jpeg', imageBytes)
+           ]));
+        } else {
+           content.add(Content.text(prompt));
+        }
+        
+        final response = await model.generateContent(content);
+        
+        if (response.text != null) {
+          setModalState(() {
+            descController.text = response.text!;
+          });
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка ИИ: $e'), backgroundColor: Colors.red));
+      } finally {
+        setModalState(() => isGeneratingAI = false);
       }
     }
 
@@ -65,19 +138,22 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                     Text('Добавление товара', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87), textAlign: TextAlign.center),
                     const SizedBox(height: 16),
 
-                    // ФОТО ТОВАРА
+                    // ФОТО ТОВАРА (КВАДРАТНОЕ ПРЕВЬЮ)
                     GestureDetector(
-                      onTap: () => pickImage(setModalState),
+                      onTap: () => pickAndCropImage(setModalState),
                       child: Container(
                         height: 150,
+                        width: 150, 
+                        alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: isDark ? Colors.grey[800] : Colors.grey[200],
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: isDark ? Colors.grey[700]! : Colors.grey[300]!, width: 2, style: BorderStyle.solid),
+                          shape: BoxShape.circle, 
+                          borderRadius: selectedImage == null ? null : BorderRadius.circular(16),
+                          border: Border.all(color: isDark ? Colors.grey[700]! : Colors.grey[300]!, width: 2),
                           image: selectedImage != null ? DecorationImage(image: FileImage(selectedImage!), fit: BoxFit.cover) : null,
                         ),
                         child: selectedImage == null 
-                            ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_a_photo, size: 40, color: Colors.blueGrey[400]), const SizedBox(height: 8), Text('Нажмите, чтобы добавить фото', style: TextStyle(color: Colors.blueGrey[400]))])
+                            ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_a_photo, size: 40, color: Colors.blueGrey[400]), const SizedBox(height: 8), Text('Загрузить', style: TextStyle(color: Colors.blueGrey[400]))])
                             : null,
                       ),
                     ),
@@ -132,9 +208,14 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                               border: const OutlineInputBorder(),
                               suffixIcon: IconButton(
                                 icon: const Icon(Icons.qr_code_scanner, color: Colors.blue),
-                                onPressed: () {
-                                  // TODO: В следующем шаге подключим пакет сканера камеры
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Камера штрихкодов будет подключена в следующем обновлении!')));
+                                onPressed: () async {
+                                  // --- СКАНЕР ШТРИХКОДОВ ---
+                                  var res = await Navigator.push(context, MaterialPageRoute(builder: (context) => const SimpleBarcodeScannerPage()));
+                                  if (res is String && res != '-1') {
+                                    setModalState(() {
+                                      barcodeController.text = res;
+                                    });
+                                  }
                                 },
                               ),
                             ),
@@ -167,14 +248,13 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                         suffixIcon: Column(
                           mainAxisAlignment: MainAxisAlignment.start,
                           children: [
-                            IconButton(
-                              icon: const Icon(Icons.auto_awesome, color: Colors.deepPurpleAccent),
-                              tooltip: 'Сгенерировать ИИ-описание',
-                              onPressed: () {
-                                // TODO: Интеграция с Google AI Studio
-                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Магия Google AI скоро заработает!')));
-                              },
-                            ),
+                            isGeneratingAI 
+                              ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.deepPurpleAccent)))
+                              : IconButton(
+                                  icon: const Icon(Icons.auto_awesome, color: Colors.deepPurpleAccent),
+                                  tooltip: 'Распознать по фото и описать (ИИ)',
+                                  onPressed: () => generateDescriptionWithAI(setModalState),
+                                ),
                           ],
                         ),
                       ),
@@ -215,7 +295,7 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                             'description': descController.text.trim(),
                             'image_base64': imageBase64,
                             'created_at': FieldValue.serverTimestamp(),
-                            'is_active': stock > 0, // Авто-скрытие если 0
+                            'is_active': stock > 0, 
                           });
 
                           if (context.mounted) {
@@ -410,3 +490,4 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
     );
   }
 }
+
