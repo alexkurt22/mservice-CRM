@@ -3,8 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:image_cropper/image_cropper.dart';
-import 'package:mobile_scanner/mobile_scanner.dart'; // <--- НОВЫЙ ИМПОРТ
+import 'package:mobile_scanner/mobile_scanner.dart'; 
 import 'package:google_generative_ai/google_generative_ai.dart';
 
 class StoreManagementScreen extends StatefulWidget {
@@ -31,46 +30,28 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
     String condition = 'Новый'; 
     File? selectedImage;
     bool isSaving = false;
-    bool isGeneratingAI = false;
+    bool isGeneratingAI =false;
 
-    Future<void> pickAndCropImage(StateSetter setModalState) async {
+    // --- БЕЗОПАСНЫЙ ВЫБОР ФОТО БЕЗ ВЫЛЕТОВ ---
+    Future<void> pickImage(StateSetter setModalState) async {
       try {
         final picker = ImagePicker();
-        final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+        final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80, maxWidth: 800);
         
         if (pickedFile != null) {
-          CroppedFile? croppedFile = await ImageCropper().cropImage(
-            sourcePath: pickedFile.path,
-            aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1), 
-            uiSettings: [
-              AndroidUiSettings(
-                  toolbarTitle: 'Кадрирование',
-                  toolbarColor: isDark ? Colors.grey[900] : Colors.blueGrey[900],
-                  toolbarWidgetColor: Colors.white,
-                  initAspectRatio: CropAspectRatioPreset.square,
-                  lockAspectRatio: true),
-              IOSUiSettings(
-                title: 'Кадрирование',
-                aspectRatioLockEnabled: true,
-                resetAspectRatioEnabled: false,
-              ),
-            ],
-          );
-
-          if (croppedFile != null) {
-            setModalState(() => selectedImage = File(croppedFile.path));
-          }
+          setModalState(() => selectedImage = File(pickedFile.path));
         }
       } catch (e) {
         debugPrint('Ошибка выбора фото: $e');
       }
     }
 
+    // --- ГЕНЕРАЦИЯ ОПИСАНИЯ ЧЕРЕЗ ИИ ---
     Future<void> generateDescriptionWithAI(StateSetter setModalState) async {
       setModalState(() => isGeneratingAI = true);
 
       try {
-        // !!! ВСТАВЬ СВОЙ КЛЮЧ GEMINI СЮДА !!!
+        // !!! УБЕДИСЬ, ЧТО ТУТ ВСТАВЛЕН ТВОЙ КЛЮЧ GEMINI !!!
         const apiKey = 'AQ.Ab8RN6K7e2RvnnhmLv-rBAcTr_6r4qG9ifeiZQFWxcv4_TWPEw'; 
         
         final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: apiKey);
@@ -103,13 +84,15 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
           });
         }
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка ИИ: $e'), backgroundColor: Colors.red));
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка ИИ: $e'), backgroundColor: Colors.red));
+        }
       } finally {
         setModalState(() => isGeneratingAI = false);
       }
     }
 
-    // --- ФУНКЦИЯ ДЛЯ НОВОГО СКАНЕРА ---
+    // --- СКАНЕР ШТРИХКОДОВ ---
     void scanBarcode(StateSetter setModalState) {
       showDialog(
         context: context,
@@ -131,7 +114,7 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                         setModalState(() {
                           barcodeController.text = code;
                         });
-                        Navigator.pop(context); // Закрываем сканер
+                        Navigator.pop(context); 
                       }
                     }
                   },
@@ -167,22 +150,24 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                     Text('Добавление товара', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87), textAlign: TextAlign.center),
                     const SizedBox(height: 16),
 
+                    // ФОТО ТОВАРА (ПРЕВЬЮ)
                     GestureDetector(
-                      onTap: () => pickAndCropImage(setModalState),
-                      child: Container(
-                        height: 150,
-                        width: 150, 
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: isDark ? Colors.grey[800] : Colors.grey[200],
-                          shape: BoxShape.circle, 
-                          borderRadius: selectedImage == null ? null : BorderRadius.circular(16),
-                          border: Border.all(color: isDark ? Colors.grey[700]! : Colors.grey[300]!, width: 2),
-                          image: selectedImage != null ? DecorationImage(image: FileImage(selectedImage!), fit: BoxFit.cover) : null,
+                      onTap: () => pickImage(setModalState),
+                      child: Center(
+                        child: Container(
+                          height: 120,
+                          width: 120, 
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: isDark ? Colors.grey[800] : Colors.grey[200],
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: isDark ? Colors.grey[700]! : Colors.grey[300]!, width: 2),
+                            image: selectedImage != null ? DecorationImage(image: FileImage(selectedImage!), fit: BoxFit.cover) : null,
+                          ),
+                          child: selectedImage == null 
+                              ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_a_photo, size: 32, color: Colors.blueGrey[400]), const SizedBox(height: 4), Text('Фото', style: TextStyle(color: Colors.blueGrey[400], fontSize: 12))])
+                              : null,
                         ),
-                        child: selectedImage == null 
-                            ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_a_photo, size: 40, color: Colors.blueGrey[400]), const SizedBox(height: 8), Text('Загрузить', style: TextStyle(color: Colors.blueGrey[400]))])
-                            : null,
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -234,7 +219,7 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                               border: const OutlineInputBorder(),
                               suffixIcon: IconButton(
                                 icon: const Icon(Icons.qr_code_scanner, color: Colors.blue),
-                                onPressed: () => scanBarcode(setModalState), // ВЫЗЫВАЕМ НОВЫЙ СКАНЕР
+                                onPressed: () => scanBarcode(setModalState), 
                               ),
                             ),
                           ),
@@ -363,7 +348,6 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
       ),
       body: Column(
         children: [
-          // ПОИСКОВИК
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(color: Theme.of(context).cardColor, boxShadow: [BoxShadow(color: Colors.black.withOpacity(isDark ? 0.3 : 0.05), blurRadius: 5, offset: const Offset(0, 2))]),
@@ -383,7 +367,6 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
             ),
           ),
           
-          // СПИСОК ТОВАРОВ
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance.collection('products').orderBy('created_at', descending: true).snapshots(),
@@ -436,10 +419,10 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                       clipBehavior: Clip.antiAlias,
                       child: Row(
                         children: [
-                          // ФОТО ТОВАРА СЛЕВА
+                          // КВАДРАТНОЕ ФОТО ТОВАРА СЛЕВА (ФИКСИРОВАННЫЙ РАЗМЕР)
                           Container(
-                            height: 100,
-                            width: 100,
+                            height: 90,
+                            width: 90,
                             decoration: BoxDecoration(
                               color: isDark ? Colors.grey[800] : Colors.grey[200],
                               image: imageBase64 != null && imageBase64.toString().isNotEmpty
@@ -451,7 +434,6 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                                 : null,
                           ),
                           
-                          // ИНФОРМАЦИЯ СПРАВА
                           Expanded(
                             child: Padding(
                               padding: const EdgeInsets.all(12.0),
