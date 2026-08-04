@@ -1,7 +1,7 @@
 import 'dart:io';
+import 'dart:convert'; // Нужно для Base64
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
@@ -36,9 +36,8 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
     List<TextEditingController> pollOptionsControllers = [
       TextEditingController(),
       TextEditingController()
-    ]; // По умолчанию 2 варианта ответа
+    ];
 
-    // Выбор и сжатие фото
     Future<void> pickImage(StateSetter setSheetState) async {
       try {
         final XFile? image = await _picker.pickImage(
@@ -56,7 +55,6 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
       }
     }
 
-    // Вставка тегов форматирования
     void insertFormatting(String prefix, String suffix) {
       final text = contentController.text;
       final selection = contentController.selection;
@@ -72,18 +70,19 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true, 
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => StatefulBuilder(
         builder: (context, setSheetState) {
           return Padding(
             padding: EdgeInsets.only(
-              bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 20, 
               left: 16, right: 16, top: 16
             ),
             child: FractionallySizedBox(
               heightFactor: 0.95, 
-              child: SingleChildScrollView( // Добавили скролл для длинной формы
+              child: SingleChildScrollView( 
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -96,7 +95,6 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                     Text('Создание публикации', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87), textAlign: TextAlign.center),
                     const SizedBox(height: 16),
 
-                    // Выбор типа: Новость, Акция, Конкурс
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Row(
@@ -134,7 +132,6 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                     ),
                     const SizedBox(height: 12),
 
-                    // Панель форматирования текста
                     Container(
                       decoration: BoxDecoration(color: isDark ? Colors.grey[800] : Colors.blueGrey[50], borderRadius: BorderRadius.circular(8)),
                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -164,12 +161,11 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                     ),
                     const SizedBox(height: 12),
 
-                    // Превью и Выбор фото
                     OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
                       onPressed: () => pickImage(setSheetState), 
                       icon: const Icon(Icons.image, color: Colors.green), 
-                      label: Text(selectedImage == null ? 'ВЫБРАТЬ ФОТО (ДО 1.2MB)' : 'ИЗМЕНИТЬ ФОТО', style: const TextStyle(color: Colors.green))
+                      label: Text(selectedImage == null ? 'ВЫБРАТЬ ФОТО (Base64)' : 'ИЗМЕНИТЬ ФОТО', style: const TextStyle(color: Colors.green))
                     ),
                     
                     if (selectedImage != null) ...[
@@ -220,7 +216,6 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                       onChanged: (val) => setSheetState(() => hasPoll = val),
                     ),
 
-                    // ЕСЛИ ОПРОС ВКЛЮЧЕН — ПОКАЗЫВАЕМ КОНСТРУКТОР
                     if (hasPoll) ...[
                       Container(
                         padding: const EdgeInsets.all(12),
@@ -307,7 +302,6 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                           return;
                         }
 
-                        // Валидация опроса
                         Map<String, dynamic>? pollData;
                         if (hasPoll) {
                           final question = pollQuestionController.text.trim();
@@ -328,7 +322,7 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                           pollData = {
                             'question': question,
                             'options': options,
-                            'voted_users': [], // Массив телефонов/ID проголосовавших
+                            'voted_users': [], 
                             'total_votes': 0
                           };
                         }
@@ -336,35 +330,28 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                         setSheetState(() => isUploading = true);
 
                         try {
-                          String? imageUrl;
+                          String? imageBase64;
 
-                          // Если выбрали картинку — грузим в Storage
+                          // ВРЕМЕННОЕ РЕШЕНИЕ: Читаем файл и конвертируем в Base64 без загрузки в Firebase Storage
                           if (selectedImage != null) {
-                            final ref = FirebaseStorage.instance
-                                .ref()
-                                .child('news_images')
-                                .child('${DateTime.now().millisecondsSinceEpoch}.jpg');
-                            
-                            await ref.putFile(selectedImage!);
-                            imageUrl = await ref.getDownloadURL();
+                            final bytes = await selectedImage!.readAsBytes();
+                            imageBase64 = base64Encode(bytes);
                           }
 
-                          // Сохраняем пост в БД
                           await FirebaseFirestore.instance.collection('news_feed').add({
                             'title': title,
                             'content': content,
                             'type': selectedType,
-                            'image_url': imageUrl,
+                            'image_base64': imageBase64, // Сохраняем как Base64
                             'created_at': FieldValue.serverTimestamp(),
                             'is_active': true,
-                            // Новые поля для интерактива:
                             'allow_likes': allowLikes,
                             'allow_comments': allowComments,
                             'allow_sharing': allowSharing,
                             'likes_count': 0,
                             'liked_by': [],
                             'shares_count': 0,
-                            'poll': pollData, // Данные опроса (null, если выключен)
+                            'poll': pollData, 
                           });
 
                           if (context.mounted) {
@@ -445,10 +432,13 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
               final type = data['type'] ?? 'Новость';
               final title = data['title'] ?? 'Без заголовка';
               final content = data['content'] ?? '';
+              
+              // Читаем обе версии: и новый base64, и старый URL (если он вдруг был)
+              final imageBase64 = data['image_base64'];
               final imageUrl = data['image_url'];
+
               final isActive = data['is_active'] ?? true;
               
-              // Статистика
               final likes = data['likes_count'] ?? 0;
               final shares = data['shares_count'] ?? 0;
               final hasPoll = data['poll'] != null;
@@ -472,7 +462,6 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Шапка поста
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                       decoration: BoxDecoration(
@@ -498,8 +487,17 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                       ),
                     ),
 
-                    // Картинка поста (если есть)
-                    if (imageUrl != null && imageUrl.toString().isNotEmpty)
+                    // Отрисовка Base64 картинки
+                    if (imageBase64 != null && imageBase64.toString().isNotEmpty)
+                      Image.memory(
+                        base64Decode(imageBase64),
+                        height: 180,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => const SizedBox(height: 50, child: Center(child: Text('Ошибка загрузки фото'))),
+                      )
+                    // Отрисовка старого URL, если он есть
+                    else if (imageUrl != null && imageUrl.toString().isNotEmpty)
                       Image.network(
                         imageUrl,
                         height: 180,
@@ -512,7 +510,6 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                         errorBuilder: (context, error, stackTrace) => const SizedBox(height: 50, child: Center(child: Text('Ошибка загрузки фото'))),
                       ),
                     
-                    // Текст поста
                     Padding(
                       padding: const EdgeInsets.all(16.0),
                       child: Column(
@@ -530,7 +527,6 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                       ),
                     ),
 
-                    // Блок со статистикой интерактива
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       color: isDark ? Colors.grey[850] : Colors.grey[100],
@@ -545,7 +541,6 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                       ),
                     ),
 
-                    // Кнопки управления (Удалить / Скрыть)
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       child: Row(
@@ -581,3 +576,4 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
     );
   }
 }
+
