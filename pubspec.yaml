@@ -25,6 +25,9 @@ dependencies:
   file_picker: ^8.0.0
   flutter_ringtone_player: ^4.0.0+4
   just_audio: ^0.9.36
+  google_generative_ai: ^0.4.3
+  simple_barcode_scanner: ^0.0.9
+  image_cropper: ^7.1.0
   path_provider: ^2.1.2
   flutter_sound: ^9.2.13
   permission_handler: ^11.3.1
