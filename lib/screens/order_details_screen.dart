@@ -116,7 +116,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
-  // --- ЛОГИКА ДЕЛЕГИРОВАНИЯ И ШЕРИНГА ---
   void _showDelegationSheet() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final String orderText = '''
@@ -370,14 +369,13 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
-  // --- УНИВЕРСАЛЬНОЕ ОКНО ЗАВЕРШЕНИЯ И РАСЧЕТА (С КАССАМИ И ОПЛАТОЙ) ---
   Future<void> _showCompletionDialog() async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final initialPrice = widget.orderData['price']?.toString() ?? '';
     final priceController = TextEditingController(text: initialPrice);
     final paidController = TextEditingController(text: initialPrice); 
     int refillsCount = 0;
-    String selectedPaymentMethod = 'Наличные'; // Наличные, Карта/Терминал, Перечисление
+    String selectedPaymentMethod = 'Наличные'; 
 
     await showDialog(
       context: context,
@@ -395,7 +393,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                   Text('1. ФИНАНСЫ И ОПЛАТА', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDark ? Colors.white70 : Colors.blueGrey)),
                   const SizedBox(height: 12),
                   
-                  // Способ оплаты
                   DropdownButtonFormField<String>(
                     value: selectedPaymentMethod,
                     dropdownColor: Theme.of(context).cardColor,
@@ -528,7 +525,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ремонт успешно завершен и выдан!'), backgroundColor: Colors.green));
-        Navigator.pop(context);
+        Navigator.pop(context); // Возвращаемся из деталей заказа
+        _showFollowUpDialog(); // <--- ВЫЗЫВАЕМ ОКНО СОЗДАНИЯ НАПОМИНАНИЯ
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red));
@@ -537,7 +535,71 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
-  // --- НОВОЕ: ЛОГИКА ОТМЕНЫ ЗАКАЗА С ПРИЧИНОЙ ---
+  // --- НОВОЕ: ОКНО СОЗДАНИЯ ЗАДАЧИ FOLLOW-UP ---
+  void _showFollowUpDialog() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        title: Row(
+          children: [
+            const Icon(Icons.notifications_active, color: Colors.orange),
+            const SizedBox(width: 8),
+            Text('Напоминание', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+          ],
+        ),
+        content: Text('Хотите, чтобы CRM напомнила вам связаться с клиентом и узнать, как работает устройство после ремонта?', style: TextStyle(color: isDark ? Colors.white70 : Colors.blueGrey)),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx); 
+            },
+            child: const Text('Не надо', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+            onPressed: () => _createTask(1, ctx),
+            child: const Text('Через 1 мес.', style: TextStyle(color: Colors.white)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple),
+            onPressed: () => _createTask(3, ctx),
+            child: const Text('Через 3 мес.', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _createTask(int months, BuildContext dialogCtx) async {
+    Navigator.pop(dialogCtx); 
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final myPhone = prefs.getString('employee_phone') ?? 'admin';
+      final dueDate = DateTime.now().add(Duration(days: 30 * months));
+
+      await FirebaseFirestore.instance.collection('tasks').add({
+        'title': 'Follow-up: ${widget.orderData['client_name'] ?? 'Клиент'}',
+        'description': 'Узнать как работает ${widget.orderData['device_type'] ?? 'устройство'} после ремонта.\nТелефон: ${widget.orderData['phone'] ?? ''}',
+        'due_date': Timestamp.fromDate(dueDate),
+        'is_completed': false,
+        'created_at': FieldValue.serverTimestamp(),
+        'assigned_to': myPhone,
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Напоминание успешно создано!'), backgroundColor: Colors.green));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка создания задачи: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+
   void _showCancelOrderDialog() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     String selectedReason = 'Клиент отказался';
@@ -627,14 +689,14 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     try {
       await FirebaseFirestore.instance.collection('orders').doc(widget.orderId).update({
         'status': 'canceled',
-        'cancel_reason': reason, // Сохраняем причину отмены
+        'cancel_reason': reason, 
         'canceled_at': FieldValue.serverTimestamp(),
         'has_unread_update': true,
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Заказ успешно отменен'), backgroundColor: Colors.orange));
-        Navigator.pop(context); // Возвращаемся на предыдущий экран
+        Navigator.pop(context); 
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка отмены: $e'), backgroundColor: Colors.red));
@@ -718,7 +780,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
-  // --- БЛОК ОТРИСОВКИ КАРТИНОК ---
   Widget _buildMediaAttachments(bool isDark) {
     final imageBase64 = widget.orderData['image_base64'];
     if (imageBase64 == null) return const SizedBox.shrink();
@@ -902,14 +963,12 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         foregroundColor: Colors.white,
         title: const Text('Детали заказа', style: TextStyle(fontSize: 18)),
         actions: [
-          // Кнопка ОТМЕНЫ ЗАКАЗА
           if (status != 'completed' && status != 'canceled')
             IconButton(
               tooltip: 'Отменить заказ',
               icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
               onPressed: _showCancelOrderDialog,
             ),
-          // Кнопка ЗАКРЫТИЯ ЗАКАЗА
           if (status != 'completed' && status != 'canceled')
             TextButton.icon(
               style: TextButton.styleFrom(foregroundColor: Colors.white),
@@ -1226,7 +1285,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                         children: [
                           Icon(Icons.celebration, color: isDark ? Colors.green[300] : Colors.green, size: 28),
                           const SizedBox(width: 12),
-                          Expanded(child: Text('Ремонт успешно завершен и выдан клиент!', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.green[300] : Colors.green, fontSize: 16))),
+                          Expanded(child: Text('Ремонт успешно завершен и выдан клиенту!', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.green[300] : Colors.green, fontSize: 16))),
                         ],
                       ),
                     ),
