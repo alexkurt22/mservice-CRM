@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
-import 'package:simple_barcode_scanner/simple_barcode_scanner.dart';
+import 'package:mobile_scanner/mobile_scanner.dart'; // <--- НОВЫЙ ИМПОРТ
 import 'package:google_generative_ai/google_generative_ai.dart';
 
 class StoreManagementScreen extends StatefulWidget {
@@ -33,7 +33,6 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
     bool isSaving = false;
     bool isGeneratingAI = false;
 
-    // --- ФУНКЦИЯ ВЫБОРА И ОБРЕЗКИ ФОТО (КВАДРАТ 1:1) ---
     Future<void> pickAndCropImage(StateSetter setModalState) async {
       try {
         final picker = ImagePicker();
@@ -42,7 +41,7 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
         if (pickedFile != null) {
           CroppedFile? croppedFile = await ImageCropper().cropImage(
             sourcePath: pickedFile.path,
-            aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1), // СТРОГИЙ КВАДРАТ
+            aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1), 
             uiSettings: [
               AndroidUiSettings(
                   toolbarTitle: 'Кадрирование',
@@ -67,20 +66,17 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
       }
     }
 
-    // --- ФУНКЦИЯ РАСПОЗНАВАНИЯ ТОВАРА ПО ФОТО И ГЕНЕРАЦИИ ОПИСАНИЯ ---
     Future<void> generateDescriptionWithAI(StateSetter setModalState) async {
       setModalState(() => isGeneratingAI = true);
 
       try {
-        // !!! ВСТАВЬ СВОЙ КЛЮЧ ОТ GOOGLE AI STUDIO СЮДА !!!
+        // !!! ВСТАВЬ СВОЙ КЛЮЧ GEMINI СЮДА !!!
         const apiKey = 'AQ.Ab8RN6K7e2RvnnhmLv-rBAcTr_6r4qG9ifeiZQFWxcv4_TWPEw'; 
         
-        // Используем модель, которая понимает и текст, и картинки
         final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: apiKey);
         
         String prompt = 'Напиши красивое, короткое и продающее описание для этого товара. Укажи его вероятные преимущества для покупателя. Текст на русском языке, без воды, буквально 3-4 предложения для интернет-магазина.';
         
-        // Если пользователь уже ввел название товара, добавляем его в промпт
         if (nameController.text.trim().isNotEmpty) {
           prompt += ' Товар называется: "${nameController.text.trim()}".';
         } else {
@@ -89,7 +85,6 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
 
         List<Content> content = [];
         
-        // Если есть картинка, отправляем её вместе с текстом!
         if (selectedImage != null) {
            final imageBytes = await selectedImage!.readAsBytes();
            content.add(Content.multi([
@@ -112,6 +107,40 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
       } finally {
         setModalState(() => isGeneratingAI = false);
       }
+    }
+
+    // --- ФУНКЦИЯ ДЛЯ НОВОГО СКАНЕРА ---
+    void scanBarcode(StateSetter setModalState) {
+      showDialog(
+        context: context,
+        builder: (context) {
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.all(10),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: SizedBox(
+                height: 400,
+                width: double.infinity,
+                child: MobileScanner(
+                  onDetect: (capture) {
+                    final List<Barcode> barcodes = capture.barcodes;
+                    if (barcodes.isNotEmpty) {
+                      final String? code = barcodes.first.rawValue;
+                      if (code != null) {
+                        setModalState(() {
+                          barcodeController.text = code;
+                        });
+                        Navigator.pop(context); // Закрываем сканер
+                      }
+                    }
+                  },
+                ),
+              ),
+            ),
+          );
+        },
+      );
     }
 
     showModalBottomSheet(
@@ -138,7 +167,6 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                     Text('Добавление товара', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87), textAlign: TextAlign.center),
                     const SizedBox(height: 16),
 
-                    // ФОТО ТОВАРА (КВАДРАТНОЕ ПРЕВЬЮ)
                     GestureDetector(
                       onTap: () => pickAndCropImage(setModalState),
                       child: Container(
@@ -159,7 +187,6 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // НАЗВАНИЕ И СОСТОЯНИЕ
                     TextField(
                       controller: nameController,
                       style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold),
@@ -194,7 +221,6 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                     ),
                     const SizedBox(height: 12),
 
-                    // ШТРИХКОД И ОСТАТОК
                     Row(
                       children: [
                         Expanded(
@@ -208,15 +234,7 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                               border: const OutlineInputBorder(),
                               suffixIcon: IconButton(
                                 icon: const Icon(Icons.qr_code_scanner, color: Colors.blue),
-                                onPressed: () async {
-                                  // --- СКАНЕР ШТРИХКОДОВ ---
-                                  var res = await Navigator.push(context, MaterialPageRoute(builder: (context) => const SimpleBarcodeScannerPage()));
-                                  if (res is String && res != '-1') {
-                                    setModalState(() {
-                                      barcodeController.text = res;
-                                    });
-                                  }
-                                },
+                                onPressed: () => scanBarcode(setModalState), // ВЫЗЫВАЕМ НОВЫЙ СКАНЕР
                               ),
                             ),
                           ),
@@ -235,7 +253,6 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                     ),
                     const SizedBox(height: 12),
 
-                    // ОПИСАНИЕ + AI КНОПКА
                     TextField(
                       controller: descController,
                       maxLines: 4,
