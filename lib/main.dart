@@ -2,10 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart'; 
 import 'package:cloud_firestore/cloud_firestore.dart'; 
+import 'package:firebase_messaging/firebase_messaging.dart'; // <--- Добавили для Push
+
 import 'firebase_options.dart';
 import 'screens/dashboard_screen.dart'; 
 import 'screens/login_screen.dart'; 
-import 'screens/settings_screen.dart'; // Важно за преносот на темата
+import 'screens/settings_screen.dart'; // Р’Р°Р¶РЅРѕ Р·Р° РїСЂРµРЅРѕСЃРѕС‚ РЅР° С‚РµРјР°С‚Р°
+
+// Экспорты для маршрутизации
+import 'screens/orders_screen.dart';
+import 'screens/chat_lists_screen.dart';
+
+// ГЛОБАЛЬНЫЙ КЛЮЧ: Позволяет переключать экраны без контекста при клике на Push
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,7 +35,7 @@ void main() async {
         startScreen = const DashboardScreen();
       }
     } catch (e) {
-      debugPrint('Грешка при проверка на сесијата на вработениот: $e');
+      debugPrint('Р“СЂРµС€РєР° РїСЂРё РїСЂРѕРІРµСЂРєР° РЅР° СЃРµСЃРёСР°С‚Р° РЅР° РІСЂР°Р±РѕС‚РµРЅРёРѕС‚: $e');
     }
   }
 
@@ -50,9 +59,35 @@ class _MyAppState extends State<MyApp> {
   void initState() {
     super.initState();
     _isDarkMode = widget.initialDarkMode;
+    _setupPushRouting(); // <--- ЗАПУСКАЕМ СЛУХАЧ ПУШЕЙ
   }
 
-  // Функција за промена и зачувување на темата
+  // --- ЛОГИКА МАРШРУТИЗАЦИИ (DEEP LINKS) ПРИ КЛИКЕ НА PUSH ---
+  Future<void> _setupPushRouting() async {
+    // 1. Приложение было полностью закрыто, и открылось по клику на Пуш
+    RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+    if (initialMessage != null) {
+      _handlePushMessage(initialMessage);
+    }
+
+    // 2. Приложение было свернуто (в фоне), и открылось по клику на Пуш
+    FirebaseMessaging.onMessageOpenedApp.listen(_handlePushMessage);
+  }
+
+  void _handlePushMessage(RemoteMessage message) {
+    final type = message.data['type'];
+    
+    // Перекидываем пользователя на нужный экран в зависимости от типа Пуша
+    if (type == 'chat') {
+      navigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => const TeamChatsListScreen()));
+    } else if (type == 'negotiation') {
+      navigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => const OrdersScreen(status: 'awaiting_approval', title: 'Ожидают ответа')));
+    } else if (type == 'new_order') {
+      navigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => const OrdersScreen(status: 'new', title: 'Новые заказы')));
+    }
+  }
+
+  // Р¤СѓРЅРєС†РёСР° Р·Р° РїСЂРѕРјРµРЅР° Рё Р·Р°С‡СѓРІСѓРІР°СљРµ РЅР° С‚РµРјР°С‚Р°
   Future<void> _toggleTheme(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('is_dark_mode', value);
@@ -64,6 +99,7 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey, // <--- ПРИВЯЗАЛИ КЛЮЧ
       debugShowCheckedModeBanner: false, 
       title: 'M-Service CRM',
       theme: ThemeData(
