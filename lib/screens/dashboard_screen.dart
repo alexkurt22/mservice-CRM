@@ -8,6 +8,7 @@ import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 
 import 'users_screen.dart';
 import 'orders_screen.dart';
+import 'database_cleanup_screen.dart'; // <--- ВОТ ЭТОТ ИМПОРТ ВЕРНУЛСЯ
 import 'settings_screen.dart'; 
 import 'chat_lists_screen.dart'; 
 import 'statistics_screen.dart';
@@ -178,6 +179,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
             
+            // --- КНОПКА ОЧИСТКИ БАЗЫ ДЛЯ ВЛАДЕЛЬЦА ---
+            if (_myRole == 'Владелец') ...[
+              Divider(height: 1, color: isDark ? Colors.grey[800] : Colors.grey[300]),
+              ListTile(
+                tileColor: isDark ? Colors.red[900]?.withOpacity(0.2) : Colors.red[50], 
+                leading: Icon(Icons.delete_sweep, color: isDark ? Colors.red[300] : Colors.red), 
+                title: Text('Очистка базы данных', style: TextStyle(color: isDark ? Colors.red[300] : Colors.red, fontWeight: FontWeight.bold, fontSize: 15)), 
+                onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const DatabaseCleanupScreen())); }
+              ),
+            ],
+
             // --- КНОПКА ВЫХОДА ДЛЯ ВСЕХ ---
             Divider(height: 1, color: isDark ? Colors.grey[800] : Colors.grey[300]),
             ListTile(
@@ -327,4 +339,3 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
-
