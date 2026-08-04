@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart'; // Нужен для форматирования времени
 import 'order_details_screen.dart';
 import 'offline_order_screen.dart'; 
 
@@ -60,6 +61,20 @@ class _OrdersScreenState extends State<OrdersScreen> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  // Функция для красивого вывода времени создания заказа
+  String _formatTime(Timestamp? timestamp) {
+    if (timestamp == null) return 'Время неизвестно';
+    final date = timestamp.toDate();
+    final now = DateTime.now();
+    final isToday = date.year == now.year && date.month == now.month && date.day == now.day;
+    
+    if (isToday) {
+      return 'Сегодня в ${DateFormat('HH:mm').format(date)}';
+    } else {
+      return DateFormat('dd.MM.yy в HH:mm').format(date);
+    }
   }
 
   Widget _buildOrdersList(String statusKey, bool isDark) {
@@ -146,7 +161,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
             top: 12.0,
             left: 12.0,
             right: 12.0,
-            bottom: MediaQuery.of(context).padding.bottom + 96.0,
+            bottom: MediaQuery.of(context).padding.bottom + 120.0, // УВЕЛИЧЕН ОТСТУП, ЧТОБЫ КНОПКА НЕ ПЕРЕКРЫВАЛА ПОСЛЕДНИЙ ЗАКАЗ
           ),
           itemCount: docs.length,
           itemBuilder: (context, index) {
@@ -156,6 +171,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
             final deviceType = data['device_type'] ?? 'Устройство';
             final currentStatus = data['status'] ?? 'new';
             final hasUnreadUpdate = data['has_unread_update'] == true; 
+            
+            // Получаем время создания
+            final createdAt = data['created_at'] as Timestamp?;
             
             Color iconColor = Colors.orange;
             IconData statusIcon = Icons.new_releases;
@@ -235,7 +253,14 @@ class _OrdersScreenState extends State<OrdersScreen> {
                               ],
                             ),
                             const SizedBox(height: 4),
-                            Text(deviceType, style: TextStyle(color: isDark ? Colors.grey[300] : Colors.blueGrey[800], fontWeight: FontWeight.w600)),
+                            // ВЫВОД УСТРОЙСТВА И ВРЕМЕНИ СОЗДАНИЯ ЗАКАЗА
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(child: Text(deviceType, style: TextStyle(color: isDark ? Colors.grey[300] : Colors.blueGrey[800], fontWeight: FontWeight.w600))),
+                                Text(_formatTime(createdAt), style: TextStyle(fontSize: 11, color: isDark ? Colors.white54 : Colors.grey[600])),
+                              ],
+                            ),
                             const SizedBox(height: 4),
                             Text(
                               data['problem'] ?? 'Проблема не указана',
@@ -283,7 +308,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
         foregroundColor: Colors.white,
         title: Text(widget.title), 
       ),
-      floatingActionButton: widget.status == 'in_progress' && _hasPermission('view_all_orders') 
+      // КНОПКА ДОБАВЛЕНИЯ ЗАКАЗА ТЕПЕРЬ ВО ВКЛАДКЕ 'new'
+      floatingActionButton: widget.status == 'new' && _hasPermission('view_all_orders') 
           ? Padding(
               padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 8.0),
               child: FloatingActionButton(
@@ -341,3 +367,4 @@ class _OrdersScreenState extends State<OrdersScreen> {
     );
   }
 }
+
