@@ -8,7 +8,6 @@ import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 
 import 'users_screen.dart';
 import 'orders_screen.dart';
-import 'database_cleanup_screen.dart'; 
 import 'settings_screen.dart'; 
 import 'chat_lists_screen.dart'; 
 import 'statistics_screen.dart';
@@ -16,9 +15,6 @@ import 'tasks_screen.dart';
 import 'bulk_push_screen.dart'; 
 import 'admin_notes_screen.dart';
 import 'content_manager_screen.dart';
-import 'stats_screen.dart'; 
-
-// Правильный импорт экрана входа (он лежит в той же папке screens)
 import 'login_screen.dart'; 
 
 class DashboardScreen extends StatefulWidget {
@@ -116,13 +112,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
 
     if (confirm == true) {
-      // Очищаем локальные данные авторизации
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('employee_phone'); 
       
       if (!mounted) return;
       
-      // БЕЗ слова const перед LoginScreen(), чтобы избежать ошибки Not a constant expression
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (context) => LoginScreen()), 
@@ -183,26 +177,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ],
               ),
             ),
-            Divider(height: 1, color: isDark ? Colors.grey[800] : Colors.grey[300]),
             
-            if (_myRole == 'Владелец')
-              Column(
-                children: [
-                  ListTile(
-                    tileColor: isDark ? Colors.teal[900]?.withOpacity(0.2) : Colors.teal[50], 
-                    leading: Icon(Icons.data_usage, color: isDark ? Colors.teal[300] : Colors.teal), 
-                    title: Text('Лимиты и Расходы БД', style: TextStyle(color: isDark ? Colors.teal[300] : Colors.teal, fontWeight: FontWeight.bold, fontSize: 15)), 
-                    onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const StatsScreen())); }
-                  ),
-                  ListTile(
-                    tileColor: isDark ? Colors.red[900]?.withOpacity(0.2) : Colors.red[50], 
-                    leading: Icon(Icons.delete_sweep, color: isDark ? Colors.red[300] : Colors.red), 
-                    title: Text('Очистка базы данных', style: TextStyle(color: isDark ? Colors.red[300] : Colors.red, fontWeight: FontWeight.bold, fontSize: 15)), 
-                    onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const DatabaseCleanupScreen())); }
-                  ),
-                ],
-              ),
-
             // --- КНОПКА ВЫХОДА ДЛЯ ВСЕХ ---
             Divider(height: 1, color: isDark ? Colors.grey[800] : Colors.grey[300]),
             ListTile(
