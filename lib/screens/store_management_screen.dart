@@ -4,32 +4,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:barcode_scan2/barcode_scan2.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
-import 'package:permission_handler/permission_handler.dart';
-
-// --- ПОЛНОЭКРАННЫЙ СКАНЕР ШТРИХКОДОВ ---
-class BarcodeScannerScreen extends StatelessWidget {
-  const BarcodeScannerScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Сканирование штрихкода'), backgroundColor: Colors.black, foregroundColor: Colors.white),
-      body: MobileScanner(
-        onDetect: (capture) {
-          final List<Barcode> barcodes = capture.barcodes;
-          if (barcodes.isNotEmpty) {
-            final String? code = barcodes.first.rawValue;
-            if (code != null) {
-              Navigator.pop(context, code);
-            }
-          }
-        },
-      ),
-    );
-  }
-}
 
 class StoreManagementScreen extends StatefulWidget {
   const StoreManagementScreen({super.key});
@@ -56,6 +32,7 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
     bool isSaving = false;
     bool isGeneratingAI = false;
 
+    // --- ПРОСТОЙ И НАДЕЖНЫЙ ВЫБОР ФОТО ---
     Future<void> pickImage(StateSetter setModalState) async {
       try {
         final picker = ImagePicker();
@@ -89,6 +66,7 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
       setModalState(() => isGeneratingAI = true);
 
       try {
+        // ИСПОЛЬЗУЕМ АКТУАЛЬНУЮ МОДЕЛЬ ИЗ ТВОЕГО СПИСКА
         final model = GenerativeModel(model: 'gemini-flash-latest', apiKey: apiKey);
         String prompt = 'Напиши красивое, короткое и продающее описание для этого товара. Укажи его преимущества для покупателя. Текст на русском языке, без воды, буквально 3-4 предложения для интернет-магазина.';
         
@@ -125,17 +103,16 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
       }
     }
 
+    // --- НАДЕЖНЫЙ НАТИВНЫЙ СКАНЕР ШТРИХКОДОВ ---
     Future<void> openBarcodeScanner(StateSetter setModalState) async {
-      var status = await Permission.camera.request();
-      if (status.isGranted) {
-        if (!context.mounted) return;
-        var res = await Navigator.push(context, MaterialPageRoute(builder: (context) => const BarcodeScannerScreen()));
-        if (res is String && res.isNotEmpty) {
-          setModalState(() => barcodeController.text = res);
+      try {
+        var result = await BarcodeScanner.scan();
+        if (result.type == ResultType.Barcode) {
+          setModalState(() => barcodeController.text = result.rawContent);
         }
-      } else {
+      } catch (e) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Нет доступа к камере! Разрешите в настройках телефона.'), backgroundColor: Colors.red));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка сканирования: $e'), backgroundColor: Colors.red));
         }
       }
     }
@@ -497,3 +474,4 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
     );
   }
 }
+
