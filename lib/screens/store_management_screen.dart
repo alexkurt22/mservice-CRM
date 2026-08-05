@@ -17,7 +17,6 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
-  // --- ОКНО ДОБАВЛЕНИЯ ТОВАРА ---
   void _showAddProductDialog() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
@@ -30,9 +29,8 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
     String condition = 'Новый'; 
     File? selectedImage;
     bool isSaving = false;
-    bool isGeneratingAI =false;
+    bool isGeneratingAI = false;
 
-    // --- БЕЗОПАСНЫЙ ВЫБОР ФОТО БЕЗ ВЫЛЕТОВ ---
     Future<void> pickImage(StateSetter setModalState) async {
       try {
         final picker = ImagePicker();
@@ -46,14 +44,26 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
       }
     }
 
-    // --- ГЕНЕРАЦИЯ ОПИСАНИЯ ЧЕРЕЗ ИИ ---
+    // --- ОБНОВЛЕННАЯ ФУНКЦИЯ ИИ (С ПРОВЕРКОЙ ОШИБОК) ---
     Future<void> generateDescriptionWithAI(StateSetter setModalState) async {
+      // ПРОВЕРКА НА ПУСТОЙ КЛЮЧ
+      const apiKey ='AQ.Ab8RN6K7e2RvnnhmLv-rBAcTr_6r4qG9ifeiZQFWxcv4_TWPEw'; // <--- ВСТАВЬ СВОЙ КЛЮЧ СЮДА!
+      
+      if (apiKey.contains('AQ.Ab8RN6K7e2RvnnhmLv-rBAcTr_6r4qG9ifeiZQFWxcv4_TWPEw')) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Ошибка ключа'),
+            content: const Text('Вы не вставили свой ключ Gemini API в код.'),
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ОК'))],
+          )
+        );
+        return;
+      }
+
       setModalState(() => isGeneratingAI = true);
 
       try {
-        // !!! УБЕДИСЬ, ЧТО ТУТ ВСТАВЛЕН ТВОЙ КЛЮЧ GEMINI !!!
-        const apiKey = 'AQ.Ab8RN6K7e2RvnnhmLv-rBAcTr_6r4qG9ifeiZQFWxcv4_TWPEw'; 
-        
         final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: apiKey);
         
         String prompt = 'Напиши красивое, короткое и продающее описание для этого товара. Укажи его вероятные преимущества для покупателя. Текст на русском языке, без воды, буквально 3-4 предложения для интернет-магазина.';
@@ -84,21 +94,29 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
           });
         }
       } catch (e) {
+        // ТЕПЕРЬ ОШИБКА НЕ МОРГАЕТ, А ВЫВОДИТСЯ В ОКНЕ
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка ИИ: $e'), backgroundColor: Colors.red));
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              backgroundColor: Theme.of(context).cardColor,
+              title: const Text('Сбой нейросети', style: TextStyle(color: Colors.red)),
+              content: Text('Произошла ошибка при обращении к ИИ:\n\n$e\n\nВозможно, нужен VPN для доступа к серверам Google.'),
+              actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ОК'))],
+            )
+          );
         }
       } finally {
         setModalState(() => isGeneratingAI = false);
       }
     }
 
-    // --- СКАНЕР ШТРИХКОДОВ ---
     void scanBarcode(StateSetter setModalState) {
       showDialog(
         context: context,
         builder: (context) {
           return Dialog(
-            backgroundColor: Colors.transparent,
+            backgroundColor: Colors.black87,
             insetPadding: const EdgeInsets.all(10),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
@@ -106,6 +124,19 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                 height: 400,
                 width: double.infinity,
                 child: MobileScanner(
+                  // ДОБАВЛЕН ВЫВОД ОШИБКИ КАМЕРЫ НА ЭКРАН
+                  errorBuilder: (context, error, child) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Text(
+                          'Камера не доступна!\n\nПричина: ${error.errorDetails?.message ?? error.errorCode}\n\nПроверьте файл AndroidManifest.xml',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                      ),
+                    );
+                  },
                   onDetect: (capture) {
                     final List<Barcode> barcodes = capture.barcodes;
                     if (barcodes.isNotEmpty) {
@@ -150,7 +181,6 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                     Text('Добавление товара', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87), textAlign: TextAlign.center),
                     const SizedBox(height: 16),
 
-                    // ФОТО ТОВАРА (ПРЕВЬЮ)
                     GestureDetector(
                       onTap: () => pickImage(setModalState),
                       child: Center(
@@ -419,7 +449,6 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                       clipBehavior: Clip.antiAlias,
                       child: Row(
                         children: [
-                          // КВАДРАТНОЕ ФОТО ТОВАРА СЛЕВА (ФИКСИРОВАННЫЙ РАЗМЕР)
                           Container(
                             height: 90,
                             width: 90,
@@ -489,4 +518,3 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
     );
   }
 }
-
