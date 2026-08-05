@@ -32,7 +32,6 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
     bool isSaving = false;
     bool isGeneratingAI = false;
 
-    // --- ПРОСТОЙ И НАДЕЖНЫЙ ВЫБОР ФОТО ---
     Future<void> pickImage(StateSetter setModalState) async {
       try {
         final picker = ImagePicker();
@@ -46,9 +45,7 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
       }
     }
 
-    // --- ГЕНЕРАЦИЯ ОПИСАНИЯ ЧЕРЕЗ GEMINI С БЕЗОПАСНЫМ КЛЮЧОМ ---
     Future<void> generateDescriptionWithAI(StateSetter setModalState) async {
-      // Ключ подтягивается автоматически из GitHub Secrets при сборке APK!
       const apiKey = String.fromEnvironment('GEMINI_API_KEY', defaultValue: '');
 
       if (apiKey.isEmpty) {
@@ -66,7 +63,6 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
       setModalState(() => isGeneratingAI = true);
 
       try {
-        // ИСПОЛЬЗУЕМ АКТУАЛЬНУЮ МОДЕЛЬ ИЗ ТВОЕГО СПИСКА
         final model = GenerativeModel(model: 'gemini-flash-latest', apiKey: apiKey);
         String prompt = 'Напиши красивое, короткое и продающее описание для этого товара. Укажи его преимущества для покупателя. Текст на русском языке, без воды, буквально 3-4 предложения для интернет-магазина.';
         
@@ -103,7 +99,6 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
       }
     }
 
-    // --- НАДЕЖНЫЙ НАТИВНЫЙ СКАНЕР ШТРИХКОДОВ ---
     Future<void> openBarcodeScanner(StateSetter setModalState) async {
       try {
         var result = await BarcodeScanner.scan();
@@ -474,4 +469,3 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
     );
   }
 }
-
