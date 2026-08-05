@@ -89,7 +89,7 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
       setModalState(() => isGeneratingAI = true);
 
       try {
-        final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: apiKey);
+        final model = GenerativeModel(model: 'gemini-1.5-pro', apiKey: apiKey);
         String prompt = 'Напиши красивое, короткое и продающее описание для этого товара. Укажи его преимущества для покупателя. Текст на русском языке, без воды, буквально 3-4 предложения для интернет-магазина.';
         
         if (nameController.text.trim().isNotEmpty) {
