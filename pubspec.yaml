@@ -33,11 +33,11 @@ dependencies:
   file_picker: ^8.0.0
   path_provider: ^2.1.2
   barcode_scan2: ^4.3.0
+  mobile_scanner: ^5.0.3        # Оставляем, чтобы старые экраны не крашили сборку
+  permission_handler: ^11.3.1   # Нужен для камеры
   
-  # --- Audio (Ringtones & Voice) ---
-  flutter_ringtone_player: ^4.0.0+4
-  just_audio: ^0.9.36
-  flutter_sound: ^9.2.13
+  # --- Audio & Notifications ---
+  flutter_ringtone_player: ^4.0.0+4 # Оставил только для звука пуш-уведомлений
   
   # --- AI Services ---
   google_generative_ai: ^0.4.3
