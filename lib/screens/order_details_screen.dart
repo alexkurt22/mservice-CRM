@@ -33,6 +33,22 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   
   bool _isLoading = false;
   bool _isBargainingMode = false; 
+  String? _myPhone;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _myPhone = prefs.getString('employee_phone');
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -231,6 +247,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         'assigned_to': empPhone,
         'assigned_name': empName,
         'has_unread_update': true,
+        'master_accepted': false, // Флаг: мастер еще не принял
       });
 
       final prefs = await SharedPreferences.getInstance();
@@ -254,6 +271,9 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         'sender_phone': myPhone, 
         'created_at': FieldValue.serverTimestamp(),
         'is_read': false, 
+        'is_order_invite': true, 
+        'order_id': widget.orderId, 
+        'is_order_accepted': false, 
       });
 
       final empDoc = await FirebaseFirestore.instance.collection('employees').doc(empPhone).get();
@@ -261,7 +281,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         await FCMService.sendPushNotification(
           empDoc.data()!['fcm_token'], 
           'Новый заказ!', 
-          'Вам назначен новый заказ на ремонт. Проверьте чат!',
+          'Вам назначен новый заказ на ремонт. Проверьте чат и подтвердите!',
           'chat'
         );
       }
@@ -269,10 +289,53 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Заказ успешно назначен мастеру $empName!'), backgroundColor: Colors.green));
         setState(() {
+          widget.orderData['assigned_to'] = empPhone;
           widget.orderData['assigned_name'] = empName;
+          widget.orderData['master_accepted'] = false;
         });
       }
     } catch(e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // --- ЛОГИКА ПРИНЯТИЯ ЗАКАЗА (СНЯТИЕ БЛОКИРОВКИ) ---
+  Future<void> _acceptOrderFromDetails() async {
+    setState(() => _isLoading = true);
+    try {
+      await FirebaseFirestore.instance.collection('orders').doc(widget.orderId).update({
+         'master_accepted': true,
+         'status': 'in_progress', 
+         'has_unread_update': true,
+      });
+
+      // Ищем заказ в чатах, чтобы обновить там кнопку на "Принято"
+      if (_myPhone != null && _myPhone!.isNotEmpty) {
+         final roomsQuery = await FirebaseFirestore.instance
+             .collection('chat_rooms')
+             .where('participants', arrayContains: _myPhone)
+             .get();
+             
+         for (var room in roomsQuery.docs) {
+            final msgs = await room.reference.collection('messages')
+                .where('order_id', isEqualTo: widget.orderId)
+                .get();
+            for (var msg in msgs.docs) {
+               await msg.reference.update({'is_order_accepted': true});
+            }
+         }
+      }
+
+      if (mounted) {
+         setState(() {
+           widget.orderData['master_accepted'] = true;
+           widget.orderData['status'] = 'in_progress';
+         });
+         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Вы успешно приняли заказ в работу!'), backgroundColor: Colors.green));
+      }
+    } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -525,8 +588,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ремонт успешно завершен и выдан!'), backgroundColor: Colors.green));
-        Navigator.pop(context); // Возвращаемся из деталей заказа
-        _showFollowUpDialog(); // <--- ВЫЗЫВАЕМ ОКНО СОЗДАНИЯ НАПОМИНАНИЯ
+        Navigator.pop(context); 
+        _showFollowUpDialog(); 
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red));
@@ -535,7 +598,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
-  // --- НОВОЕ: ОКНО СОЗДАНИЯ ЗАДАЧИ FOLLOW-UP ---
   void _showFollowUpDialog() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
@@ -598,7 +660,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       }
     }
   }
-
 
   void _showCancelOrderDialog() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -704,7 +765,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
-
 
   Future<void> _updateStatus(String newStatus, {bool isAwaitingApproval = false, bool isBargainingMode = false}) async {
     setState(() => _isLoading = true);
@@ -950,11 +1010,64 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     return Icons.payments; 
   }
 
+  // --- ЭКРАН-БЛОКИРАТОР (ЕСЛИ МАСТЕР ЕЩЕ НЕ ПРИНЯЛ ЗАЯВКУ) ---
+  Widget _buildLockScreen(bool isDark) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.lock_clock, size: 100, color: Colors.orange[600]),
+            const SizedBox(height: 24),
+            Text(
+              'Ожидание подтверждения!',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Вы назначены мастером на этот заказ. Пожалуйста, примите его в работу, чтобы получить доступ к контактам клиента и деталям поломки.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 15, color: isDark ? Colors.white70 : Colors.blueGrey),
+            ),
+            const SizedBox(height: 40),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  backgroundColor: Colors.green[600],
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  elevation: 4,
+                ),
+                icon: const Icon(Icons.check_circle, size: 28),
+                label: const Text('ПРИНЯТЬ ЗАЯВКУ В РАБОТУ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                onPressed: _acceptOrderFromDetails,
+              ),
+            ),
+            const SizedBox(height: 24),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Назад к списку', style: TextStyle(color: Colors.grey, fontSize: 16)),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     String status = widget.orderData['status'] ?? 'unknown';
     String paymentMethod = widget.orderData['payment_method'] ?? 'Наличные';
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // ПРОВЕРКА ПРАВ И СТАТУСА ПРИНЯТИЯ
+    bool isAssignedMaster = widget.orderData['assigned_to'] == _myPhone;
+    bool isAwaitingAcceptance = widget.orderData['assigned_to'] != null && widget.orderData['master_accepted'] == false;
+    bool isLockedForMe = isAwaitingAcceptance && isAssignedMaster;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -962,7 +1075,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         backgroundColor: isDark ? Colors.grey[900] : Colors.blueGrey[900],
         foregroundColor: Colors.white,
         title: const Text('Детали заказа', style: TextStyle(fontSize: 18)),
-        actions: [
+        actions: isLockedForMe ? [] : [
           if (status != 'completed' && status != 'canceled')
             IconButton(
               tooltip: 'Отменить заказ',
@@ -978,237 +1091,249 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
             ),
         ],
       ),
-      body: _isLoading
+      body: _myPhone == null || _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: EdgeInsets.only(
-                left: 16.0,
-                right: 16.0,
-                top: 16.0,
-                bottom: MediaQuery.of(context).padding.bottom + 40.0, 
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  InkWell(
-                    onTap: widget.fromProfile ? null : _openClientProfile,
-                    borderRadius: BorderRadius.circular(12),
-                    child: Card(
-                      elevation: widget.fromProfile ? 0 : 2, 
-                      color: Theme.of(context).cardColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12), 
-                        side: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[300]!)
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(20.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(Icons.person, color: isDark ? Colors.grey[400] : Colors.blueGrey[400]),
-                                    const SizedBox(width: 8),
-                                    Text('${widget.orderData['client_name'] ?? 'Без имени'}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: isDark ? Colors.white : Colors.black87)),
-                                  ],
-                                ),
-                                if (!widget.fromProfile)
-                                  const Icon(Icons.chevron_right, color: Colors.grey), 
-                              ],
-                            ),
-                            Divider(height: 24, color: isDark ? Colors.grey[800] : Colors.grey[200]),
-                            Row(
-                              children: [
-                                const Icon(Icons.phone, size: 18, color: Colors.grey),
-                                const SizedBox(width: 8),
-                                Text('${widget.orderData['phone'] ?? 'Не указан'}', style: TextStyle(fontSize: 16, color: isDark ? Colors.white70 : Colors.black87)),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                const Icon(Icons.devices, size: 18, color: Colors.grey),
-                                const SizedBox(width: 8),
-                                Text('${widget.orderData['device_type'] ?? 'Не указана'}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                Icon(_getPaymentIcon(paymentMethod), size: 18, color: Colors.orange),
-                                const SizedBox(width: 8),
-                                Text('Оплата: $paymentMethod', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: isDark ? Colors.orange[300] : Colors.orange[800])),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: isDark ? Colors.orange[900]?.withOpacity(0.2) : Colors.orange[50], 
-                                borderRadius: BorderRadius.circular(8), 
-                                border: Border.all(color: isDark ? Colors.orange[800]! : Colors.orange[200]!)
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Icon(Icons.warning_amber_rounded, color: Colors.deepOrange, size: 20),
-                                      const SizedBox(width: 8),
-                                      Expanded(child: Text('${widget.orderData['problem'] ?? 'Не указана'}', style: TextStyle(fontSize: 15, color: isDark ? Colors.white : Colors.black87))),
-                                    ],
-                                  ),
-                                  _buildMediaAttachments(isDark),
-                                ],
-                              ),
-                            ),
-                            if (widget.orderData['assigned_name'] != null) ...[
-                              const SizedBox(height: 12),
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(color: isDark ? Colors.blueGrey[800] : Colors.blueGrey[50], borderRadius: BorderRadius.circular(8)),
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.engineering, color: isDark ? Colors.blueGrey[300] : Colors.blueGrey),
-                                    const SizedBox(width: 8),
-                                    Text('Назначен мастер: ${widget.orderData['assigned_name']}', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
-                                  ]
-                                )
-                              )
-                            ]
-                          ],
-                        ),
-                      ),
-                    ),
+          : isLockedForMe
+              ? _buildLockScreen(isDark)
+              : SingleChildScrollView(
+                  padding: EdgeInsets.only(
+                    left: 16.0,
+                    right: 16.0,
+                    top: 16.0,
+                    bottom: MediaQuery.of(context).padding.bottom + 40.0, 
                   ),
-                  const SizedBox(height: 16),
-
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      side: BorderSide(color: isDark ? Colors.blueGrey[600]! : Colors.blueGrey[300]!),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    onPressed: _showDelegationSheet,
-                    icon: Icon(Icons.share, color: isDark ? Colors.blueGrey[300] : Colors.blueGrey[700]),
-                    label: Text('ПОДЕЛИТЬСЯ / НАЗНАЧИТЬ МАСТЕРА', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.blueGrey[300] : Colors.blueGrey[800])),
-                  ),
-                  const SizedBox(height: 24),
-
-                  _buildHistoryBlock(widget.orderData, isDark), 
-
-                  if (status == 'new') ...[
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        backgroundColor: Colors.blue[600],
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: _showForceStartDialog,
-                      icon: const Icon(Icons.handyman),
-                      label: const Text('ПРИНЯТЬ В РАБОТУ (УСТНО)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    ),
-                    const SizedBox(height: 16),
-                    const Row(
-                      children: [
-                        Expanded(child: Divider()),
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8.0),
-                          child: Text("ИЛИ", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-                        ),
-                        Expanded(child: Divider()),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    Text('Оценка ремонта (Варианты для приложения):', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: isDark ? Colors.white70 : Colors.blueGrey)),
-                    const SizedBox(height: 12),
-                    ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _options.length,
-                      itemBuilder: (context, index) {
-                        return Card(
-                          elevation: 1,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      InkWell(
+                        onTap: widget.fromProfile ? null : _openClientProfile,
+                        borderRadius: BorderRadius.circular(12),
+                        child: Card(
+                          elevation: widget.fromProfile ? 0 : 2, 
                           color: Theme.of(context).cardColor,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[300]!)),
-                          margin: const EdgeInsets.only(bottom: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12), 
+                            side: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[300]!)
+                          ),
                           child: Padding(
-                            padding: const EdgeInsets.all(16.0),
+                            padding: const EdgeInsets.all(20.0),
                             child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text('Вариант ${index + 1}', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.blue[300] : Colors.blueGrey[800])),
-                                    if (_options.length > 1)
-                                      IconButton(
-                                        icon: const Icon(Icons.delete_outline, color: Colors.red),
-                                        onPressed: () => _removeOption(index),
-                                        tooltip: 'Удалить вариант',
-                                      ),
+                                    Row(
+                                      children: [
+                                        Icon(Icons.person, color: isDark ? Colors.grey[400] : Colors.blueGrey[400]),
+                                        const SizedBox(width: 8),
+                                        Text('${widget.orderData['client_name'] ?? 'Без имени'}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: isDark ? Colors.white : Colors.black87)),
+                                      ],
+                                    ),
+                                    if (!widget.fromProfile)
+                                      const Icon(Icons.chevron_right, color: Colors.grey), 
                                   ],
                                 ),
-                                TextField(
-                                  controller: _options[index]['description'],
-                                  style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-                                  decoration: InputDecoration(
-                                    labelText: 'Диагноз / Что делаем',
-                                    labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
-                                    filled: true,
-                                    fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                                  ),
-                                  maxLines: 2,
+                                Divider(height: 24, color: isDark ? Colors.grey[800] : Colors.grey[200]),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.phone, size: 18, color: Colors.grey),
+                                    const SizedBox(width: 8),
+                                    Text('${widget.orderData['phone'] ?? 'Не указан'}', style: TextStyle(fontSize: 16, color: isDark ? Colors.white70 : Colors.black87)),
+                                  ],
                                 ),
                                 const SizedBox(height: 12),
-                                TextField(
-                                  controller: _options[index]['price'],
-                                  style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-                                  decoration: InputDecoration(
-                                    labelText: 'Цена (TMT)',
-                                    labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
-                                    prefixIcon: const Icon(Icons.payments_outlined, color: Colors.green),
-                                    filled: true,
-                                    fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                                  ),
-                                  keyboardType: TextInputType.number,
+                                Row(
+                                  children: [
+                                    const Icon(Icons.devices, size: 18, color: Colors.grey),
+                                    const SizedBox(width: 8),
+                                    Text('${widget.orderData['device_type'] ?? 'Не указана'}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                                  ],
                                 ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Icon(_getPaymentIcon(paymentMethod), size: 18, color: Colors.orange),
+                                    const SizedBox(width: 8),
+                                    Text('Оплата: $paymentMethod', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: isDark ? Colors.orange[300] : Colors.orange[800])),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: isDark ? Colors.orange[900]?.withOpacity(0.2) : Colors.orange[50], 
+                                    borderRadius: BorderRadius.circular(8), 
+                                    border: Border.all(color: isDark ? Colors.orange[800]! : Colors.orange[200]!)
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Icon(Icons.warning_amber_rounded, color: Colors.deepOrange, size: 20),
+                                          const SizedBox(width: 8),
+                                          Expanded(child: Text('${widget.orderData['problem'] ?? 'Не указана'}', style: TextStyle(fontSize: 15, color: isDark ? Colors.white : Colors.black87))),
+                                        ],
+                                      ),
+                                      _buildMediaAttachments(isDark),
+                                    ],
+                                  ),
+                                ),
+                                if (widget.orderData['assigned_name'] != null) ...[
+                                  const SizedBox(height: 12),
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(color: isDark ? Colors.blueGrey[800] : Colors.blueGrey[50], borderRadius: BorderRadius.circular(8)),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Icon(Icons.engineering, color: isDark ? Colors.blueGrey[300] : Colors.blueGrey),
+                                            const SizedBox(width: 8),
+                                            Text('Назначен мастер: ${widget.orderData['assigned_name']}', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                                          ]
+                                        ),
+                                        const SizedBox(height: 8),
+                                        if (widget.orderData['master_accepted'] == false)
+                                          Row(children: [const Icon(Icons.access_time, color: Colors.orange, size: 16), const SizedBox(width: 4), const Text('ОЖИДАЕТ ПОДТВЕРЖДЕНИЯ', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 12))])
+                                        else
+                                          Row(children: [const Icon(Icons.check_circle, color: Colors.green, size: 16), const SizedBox(width: 4), const Text('ЗАЯВКА ПРИНЯТА В РАБОТУ', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12))])
+                                      ],
+                                    )
+                                  )
+                                ]
                               ],
                             ),
                           ),
-                        );
-                      },
-                    ),
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        side: BorderSide(color: isDark ? Colors.grey[600]! : Colors.blueGrey[400]!),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
                       ),
-                      onPressed: _addOption,
-                      icon: const Icon(Icons.add_circle_outline),
-                      label: const Text('ДОБАВИТЬ ЕЩЕ ВАРИАНТ', style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                    const SizedBox(height: 32),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        backgroundColor: Colors.orange[600],
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      const SizedBox(height: 16),
+
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          side: BorderSide(color: isDark ? Colors.blueGrey[600]! : Colors.blueGrey[300]!),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: _showDelegationSheet,
+                        icon: Icon(Icons.share, color: isDark ? Colors.blueGrey[300] : Colors.blueGrey[700]),
+                        label: Text('ПОДЕЛИТЬСЯ / НАЗНАЧИТЬ МАСТЕРА', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.blueGrey[300] : Colors.blueGrey[800])),
                       ),
-                      onPressed: () => _updateStatus('awaiting_approval', isAwaitingApproval: true),
-                      icon: const Icon(Icons.send),
-                      label: const Text('ОТПРАВИТЬ КЛИЕНТУ НА ВЫБОР', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    ),
-                  ],
+                      const SizedBox(height: 24),
+
+                      _buildHistoryBlock(widget.orderData, isDark), 
+
+                      if (status == 'new') ...[
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            backgroundColor: Colors.blue[600],
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          onPressed: _showForceStartDialog,
+                          icon: const Icon(Icons.handyman),
+                          label: const Text('ПРИНЯТЬ В РАБОТУ (УСТНО)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        ),
+                        const SizedBox(height: 16),
+                        const Row(
+                          children: [
+                            Expanded(child: Divider()),
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 8.0),
+                              child: Text("ИЛИ", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                            ),
+                            Expanded(child: Divider()),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        Text('Оценка ремонта (Варианты для приложения):', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: isDark ? Colors.white70 : Colors.blueGrey)),
+                        const SizedBox(height: 12),
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: _options.length,
+                          itemBuilder: (context, index) {
+                            return Card(
+                              elevation: 1,
+                              color: Theme.of(context).cardColor,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[300]!)),
+                              margin: const EdgeInsets.only(bottom: 16),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text('Вариант ${index + 1}', style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.blue[300] : Colors.blueGrey[800])),
+                                        if (_options.length > 1)
+                                          IconButton(
+                                            icon: const Icon(Icons.delete_outline, color: Colors.red),
+                                            onPressed: () => _removeOption(index),
+                                            tooltip: 'Удалить вариант',
+                                          ),
+                                      ],
+                                    ),
+                                    TextField(
+                                      controller: _options[index]['description'],
+                                      style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                                      decoration: InputDecoration(
+                                        labelText: 'Диагноз / Что делаем',
+                                        labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
+                                        filled: true,
+                                        fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
+                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                                      ),
+                                      maxLines: 2,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    TextField(
+                                      controller: _options[index]['price'],
+                                      style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                                      decoration: InputDecoration(
+                                        labelText: 'Цена (TMT)',
+                                        labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]),
+                                        prefixIcon: const Icon(Icons.payments_outlined, color: Colors.green),
+                                        filled: true,
+                                        fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
+                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                                      ),
+                                      keyboardType: TextInputType.number,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            side: BorderSide(color: isDark ? Colors.grey[600]! : Colors.blueGrey[400]!),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          onPressed: _addOption,
+                          icon: const Icon(Icons.add_circle_outline),
+                          label: const Text('ДОБАВИТЬ ЕЩЕ ВАРИАНТ', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                        const SizedBox(height: 32),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            backgroundColor: Colors.orange[600],
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          onPressed: () => _updateStatus('awaiting_approval', isAwaitingApproval: true),
+                          icon: const Icon(Icons.send),
+                          label: const Text('ОТПРАВИТЬ КЛИЕНТУ НА ВЫБОР', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
 
                   if (status == 'awaiting_approval') ...[
                     Container(
