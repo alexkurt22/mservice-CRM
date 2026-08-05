@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart'; // <--- НОВЫЙ ИМПОРТ ДЛЯ ФОРМАТИРОВАНИЯ ДАТ
 import 'package:mservice_crm/services/fcm_service.dart';
 import 'client_profile_screen.dart'; 
 
@@ -247,7 +248,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         'assigned_to': empPhone,
         'assigned_name': empName,
         'has_unread_update': true,
-        'master_accepted': false, // Флаг: мастер еще не принял
+        'master_accepted': false, 
       });
 
       final prefs = await SharedPreferences.getInstance();
@@ -301,7 +302,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
-  // --- ЛОГИКА ПРИНЯТИЯ ЗАКАЗА (СНЯТИЕ БЛОКИРОВКИ) ---
+  // --- ПРИНЯТИЕ ЗАКАЗА (СОХРАНЯЕМ ВРЕМЯ ПРИНЯТИЯ) ---
   Future<void> _acceptOrderFromDetails() async {
     setState(() => _isLoading = true);
     try {
@@ -309,9 +310,9 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
          'master_accepted': true,
          'status': 'in_progress', 
          'has_unread_update': true,
+         'accepted_at': FieldValue.serverTimestamp(), // ФИКСИРУЕМ ВРЕМЯ РЕАКЦИИ
       });
 
-      // Ищем заказ в чатах, чтобы обновить там кнопку на "Принято"
       if (_myPhone != null && _myPhone!.isNotEmpty) {
          final roomsQuery = await FirebaseFirestore.instance
              .collection('chat_rooms')
@@ -332,6 +333,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
          setState(() {
            widget.orderData['master_accepted'] = true;
            widget.orderData['status'] = 'in_progress';
+           widget.orderData['accepted_at'] = Timestamp.now(); // Для обновления UI
          });
          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Вы успешно приняли заказ в работу!'), backgroundColor: Colors.green));
       }
@@ -416,6 +418,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         'has_unread_update': true,
         'options': FieldValue.delete(),
         'selected_option_index': FieldValue.delete(),
+        'accepted_at': FieldValue.serverTimestamp(), // ФИКСИРУЕМ ПРИНЯТИЕ УСТНО
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1010,7 +1013,57 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     return Icons.payments; 
   }
 
-  // --- ЭКРАН-БЛОКИРАТОР (ЕСЛИ МАСТЕР ЕЩЕ НЕ ПРИНЯЛ ЗАЯВКУ) ---
+  // --- ФОРМАТИРОВАНИЕ ДАТ ДЛЯ ТАЙМИНГА ---
+  String _formatTimestamp(dynamic timestamp) {
+    if (timestamp == null) return '—';
+    if (timestamp is Timestamp) {
+      return DateFormat('dd.MM.yyyy HH:mm').format(timestamp.toDate());
+    }
+    return '—';
+  }
+
+  Widget _buildTimeRow(String label, String time, IconData icon, Color iconColor) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4.0),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: iconColor),
+          const SizedBox(width: 8),
+          Text(label, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+          const SizedBox(width: 8),
+          Expanded(child: Text(time, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimingBlock(bool isDark) {
+    final createdAt = widget.orderData['created_at'];
+    final acceptedAt = widget.orderData['accepted_at'];
+    final completedAt = widget.orderData['completed_at'];
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey[800] : Colors.grey[100],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: isDark ? Colors.grey[700]! : Colors.grey[300]!)
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Тайминг заказа (SLA):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueGrey)),
+          const SizedBox(height: 12),
+          _buildTimeRow('Оформлен:', _formatTimestamp(createdAt), Icons.add_circle_outline, Colors.blue),
+          if (acceptedAt != null)
+            _buildTimeRow('Принят мастером:', _formatTimestamp(acceptedAt), Icons.handyman, Colors.orange),
+          if (completedAt != null)
+            _buildTimeRow('Завершен:', _formatTimestamp(completedAt), Icons.check_circle_outline, Colors.green),
+        ],
+      ),
+    );
+  }
+
   Widget _buildLockScreen(bool isDark) {
     return Center(
       child: Padding(
@@ -1064,7 +1117,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     String paymentMethod = widget.orderData['payment_method'] ?? 'Наличные';
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // ПРОВЕРКА ПРАВ И СТАТУСА ПРИНЯТИЯ
     bool isAssignedMaster = widget.orderData['assigned_to'] == _myPhone;
     bool isAwaitingAcceptance = widget.orderData['assigned_to'] != null && widget.orderData['master_accepted'] == false;
     bool isLockedForMe = isAwaitingAcceptance && isAssignedMaster;
@@ -1204,7 +1256,12 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                                       ],
                                     )
                                   )
-                                ]
+                                ],
+                                
+                                // --- НОВЫЙ БЛОК: ТАЙМИНГ ЗАКАЗА ---
+                                const SizedBox(height: 12),
+                                _buildTimingBlock(isDark),
+
                               ],
                             ),
                           ),
@@ -1572,3 +1629,4 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     );
   }
 }
+
