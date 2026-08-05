@@ -9,27 +9,39 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  intl: ^0.18.0
+    
+  # --- Core & UI ---
   cupertino_icons: ^1.0.8
-  firebase_core: ^2.32.0
-  cloud_firestore: ^4.17.5
-  image_picker: ^1.1.2
-  firebase_storage: ^11.6.0
-  googleapis_auth: ^1.4.1
-  googleapis: ^13.0.0    # Добавляем это для мониторинга
-  http: ^1.2.0
+  intl: ^0.18.0
   shared_preferences: ^2.2.3
   url_launcher: ^6.3.0
+  share_plus: ^9.0.0
+  
+  # --- Firebase Services ---
+  firebase_core: ^2.32.0
+  cloud_firestore: ^4.17.5
+  firebase_storage: ^11.6.0
   firebase_messaging: ^14.9.4
-  share_plus: ^9.0.0 
+  
+  # --- Google API (Push Notifications & Monitoring) ---
+  googleapis_auth: ^1.4.1
+  googleapis: ^13.0.0
+  http: ^1.2.0
+  
+  # --- Media, Files & Hardware ---
+  image_picker: ^1.1.2
   file_picker: ^8.0.0
+  path_provider: ^2.1.2
+  mobile_scanner: ^5.0.3
+  permission_handler: ^11.3.1
+  
+  # --- Audio (Ringtones & Voice) ---
   flutter_ringtone_player: ^4.0.0+4
   just_audio: ^0.9.36
-  google_generative_ai: ^0.4.3
-  mobile_scanner: ^5.0.3
-  path_provider: ^2.1.2
   flutter_sound: ^9.2.13
-  permission_handler: ^11.3.1
+  
+  # --- AI Services ---
+  google_generative_ai: ^0.4.3
 
 dev_dependencies:
   flutter_test:
