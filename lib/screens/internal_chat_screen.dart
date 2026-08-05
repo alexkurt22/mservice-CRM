@@ -5,10 +5,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:flutter_sound/flutter_sound.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:just_audio/just_audio.dart';
-import 'package:path_provider/path_provider.dart';
 import '../services/push_service.dart'; 
 
 class InternalChatScreen extends StatefulWidget {
@@ -28,39 +24,18 @@ class _InternalChatScreenState extends State<InternalChatScreen> {
   final TextEditingController _searchController = TextEditingController();
 
   final ImagePicker _imagePicker = ImagePicker();
-  FlutterSoundRecorder? _audioRecorder;
-  bool _isRecording = false;
-  String? _currentAudioPath;
-  
-  final AudioPlayer _audioPlayer = AudioPlayer();
-  String? _currentlyPlayingId;
 
   @override
   void initState() {
     super.initState();
     _loadEmployeeData();
-    _initRecorder();
-    
-    _audioPlayer.playerStateStream.listen((state) {
-      if (state.processingState == ProcessingState.completed) {
-        if (mounted) setState(() => _currentlyPlayingId = null);
-        _audioPlayer.stop();
-      }
-    });
   }
 
   @override
   void dispose() {
     _msgController.dispose();
     _searchController.dispose();
-    _audioRecorder?.closeRecorder();
-    _audioPlayer.dispose();
     super.dispose();
-  }
-
-  Future<void> _initRecorder() async {
-    _audioRecorder = FlutterSoundRecorder();
-    await _audioRecorder!.openRecorder();
   }
 
   Future<void> _loadEmployeeData() async {
@@ -94,72 +69,19 @@ class _InternalChatScreenState extends State<InternalChatScreen> {
     }
   }
 
-  Future<void> _startRecording() async {
-    var statusMicrophone = await Permission.microphone.request();
-    if (statusMicrophone != PermissionStatus.granted) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Нет разрешения!')));
-      return;
-    }
-    try {
-      final tempDir = await getTemporaryDirectory();
-      _currentAudioPath = '${tempDir.path}/internal_audio_${DateTime.now().millisecondsSinceEpoch}.aac';
-
-      await _audioRecorder!.startRecorder(toFile: _currentAudioPath, codec: Codec.aacADTS, bitRate: 16000, sampleRate: 16000);
-      if (mounted) setState(() => _isRecording = true);
-    } catch (e) {
-      debugPrint('Ошибка записи: $e');
-    }
-  }
-
-  Future<void> _stopRecordingAndSend() async {
-    if (!_isRecording) return;
-    try {
-      await _audioRecorder!.stopRecorder();
-      if (mounted) setState(() => _isRecording = false);
-
-      if (_currentAudioPath != null) {
-        final bytes = await File(_currentAudioPath!).readAsBytes();
-        final base64Audio = base64Encode(bytes);
-        await _sendMessageToDb(text: '🎤 Голосовое сообщение', audioBase64: base64Audio);
-      }
-    } catch (e) {
-      debugPrint('Ошибка: $e');
-    }
-  }
-
-  Future<void> _sendMessageToDb({required String text, String? imageBase64, String? audioBase64}) async {
+  Future<void> _sendMessageToDb({required String text, String? imageBase64}) async {
     await FirebaseFirestore.instance.collection('internal_chat').add({
       'sender_name': _employeeName,
       'sender_phone': _employeePhone,
       'text': text,
       'created_at': FieldValue.serverTimestamp(),
       if (imageBase64 != null) 'image_base64': imageBase64,
-      if (audioBase64 != null) 'audio_base64': audioBase64,
     });
 
     try {
       await PushService.sendPushToAdmins('Чат сотрудников', '$_employeeName: $text');
     } catch (e) {
       debugPrint('Ошибка Push: $e');
-    }
-  }
-
-  Future<void> _playAudio(String messageId, String base64Audio) async {
-    if (_currentlyPlayingId == messageId) {
-      await _audioPlayer.pause();
-      if (mounted) setState(() => _currentlyPlayingId = null);
-      return;
-    }
-    try {
-      final bytes = base64Decode(base64Audio);
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/play_$messageId.aac');
-      await file.writeAsBytes(bytes);
-      await _audioPlayer.setFilePath(file.path);
-      if (mounted) setState(() => _currentlyPlayingId = messageId);
-      await _audioPlayer.play();
-    } catch (e) {
-      debugPrint("Ошибка проигрывания: $e");
     }
   }
 
@@ -200,23 +122,7 @@ class _InternalChatScreenState extends State<InternalChatScreen> {
                 child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(base64Decode(data['image_base64']), height: 150, width: double.infinity, fit: BoxFit.cover))),
               ),
             
-            if (data['audio_base64'] != null)
-              Container(
-                margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: isDark ? Colors.black26 : Colors.white54, borderRadius: BorderRadius.circular(12)),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    GestureDetector(
-                      onTap: () => _playAudio(messageId, data['audio_base64']),
-                      child: CircleAvatar(backgroundColor: isMe ? Colors.orange[600] : Colors.blue, radius: 20, child: Icon(_currentlyPlayingId == messageId ? Icons.pause : Icons.play_arrow, color: Colors.white)),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(child: Text(data['text'], style: TextStyle(fontSize: 13, color: isDark ? Colors.white : Colors.black87, fontStyle: FontStyle.italic))),
-                  ],
-                ),
-              )
-            else if (data['image_base64'] == null)
+            if (data['image_base64'] == null)
               Text(data['text'] ?? '', style: TextStyle(fontSize: 16, color: isDark ? Colors.white : Colors.black87)),
             
             const SizedBox(height: 4),
@@ -303,9 +209,6 @@ class _InternalChatScreenState extends State<InternalChatScreen> {
               },
             ),
           ),
-          
-          if (_isRecording)
-            Container(color: isDark ? Colors.red[900]?.withOpacity(0.5) : Colors.red[50], padding: const EdgeInsets.symmetric(vertical: 12), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.mic, color: Colors.red), const SizedBox(width: 8), Text('Идет запись... Отпустите для отправки', style: TextStyle(color: isDark ? Colors.red[200] : Colors.red[800], fontWeight: FontWeight.bold))])),
 
           SafeArea(
             top: false,
@@ -324,13 +227,16 @@ class _InternalChatScreenState extends State<InternalChatScreen> {
                     )
                   ),
                   const SizedBox(width: 8),
-                  if (_msgController.text.trim().isNotEmpty)
-                    Container(decoration: BoxDecoration(color: Colors.orange[600], shape: BoxShape.circle), child: IconButton(icon: const Icon(Icons.send, color: Colors.white), onPressed: _sendTextMessage))
-                  else
-                    GestureDetector(
-                      onLongPress: _startRecording, onLongPressUp: _stopRecordingAndSend,
-                      child: CircleAvatar(radius: 22, backgroundColor: _isRecording ? Colors.red : (isDark ? Colors.blueGrey[700] : Colors.orange[600]), child: Icon(_isRecording ? Icons.stop : Icons.mic, color: Colors.white, size: 22)),
-                    ),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: _msgController.text.trim().isNotEmpty ? Colors.orange[600] : Colors.grey[400], 
+                      shape: BoxShape.circle
+                    ), 
+                    child: IconButton(
+                      icon: const Icon(Icons.send, color: Colors.white), 
+                      onPressed: _msgController.text.trim().isNotEmpty ? _sendTextMessage : null,
+                    )
+                  ),
                 ],
               ),
             ),
