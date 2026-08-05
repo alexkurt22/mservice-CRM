@@ -238,7 +238,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (isEdited) Padding(padding: const EdgeInsets.right(4), child: Text('(изм.)', style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: isDark ? Colors.white54 : Colors.grey[600]))),
+                  if (isEdited) Padding(padding: const EdgeInsets.only(right: 4), child: Text('(изм.)', style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: isDark ? Colors.white54 : Colors.grey[600]))),
                   Text(isSending ? 'Отправка...' : DateFormat('HH:mm').format(dt), style: TextStyle(fontSize: 10, color: isDark ? Colors.white54 : Colors.grey[600])),
                   if (isMe) ...[const SizedBox(width: 4), Icon(isSending ? Icons.access_time : (data['is_read'] == true ? Icons.done_all : Icons.check), size: 14, color: isSending ? Colors.grey : (data['is_read'] == true ? (isDark ? Colors.lightBlueAccent : Colors.blue) : Colors.grey))]
                 ],
@@ -344,4 +344,3 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     );
   }
 }
-
