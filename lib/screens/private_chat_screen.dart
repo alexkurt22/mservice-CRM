@@ -46,7 +46,6 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     final phone = prefs.getString('employee_phone') ?? 'admin';
     if (mounted) setState(() => _myPhone = phone);
 
-    // Подтягиваем имя, чтобы в группе было видно, кто пишет
     final doc = await FirebaseFirestore.instance.collection('employees').doc(phone).get();
     if (doc.exists && mounted) {
       setState(() => _myName = doc.data()?['name'] ?? "Сотрудник");
@@ -63,10 +62,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   Future<void> _pickAndSendImage() async {
     try {
       final pickedFile = await _imagePicker.pickImage(
-        source: ImageSource.gallery, 
-        imageQuality: 40, 
-        maxWidth: 800, 
-        maxHeight: 800
+        source: ImageSource.gallery, imageQuality: 40, maxWidth: 800, maxHeight: 800
       );
       if (pickedFile != null) {
         final bytes = await File(pickedFile.path).readAsBytes();
@@ -79,13 +75,13 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   }
 
   Future<void> _sendMessageToDb({required String text, String? imageBase64}) async {
-    // Добавили sender_name для групповых чатов
     await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).collection('messages').add({
       'text': text,
       'sender_phone': _myPhone,
       'sender_name': _myName,
       'created_at': FieldValue.serverTimestamp(),
       'is_read': false,
+      'is_edited': false,
       if (imageBase64 != null) 'image_base64': imageBase64,
     });
     
@@ -105,10 +101,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
       final isGroup = roomData['is_group'] == true;
       final groupName = roomData['group_name'] ?? widget.targetName;
 
-      // Рассылаем Push-уведомления ВСЕМ участникам, кроме себя
       for (String targetPhone in parts) {
         if (targetPhone == _myPhone) continue;
-
         if (widget.roomId.contains('team_') || isGroup) {
           final empDoc = await FirebaseFirestore.instance.collection('employees').doc(targetPhone).get();
           if (empDoc.exists && empDoc.data()?['fcm_token'] != null) {
@@ -116,7 +110,6 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
             await PushService.sendPushToToken(empDoc.data()!['fcm_token'], pushTitle, text);
           }
         } else {
-          // Чат с клиентом
           final clientDoc = await FirebaseFirestore.instance.collection('clients').doc(targetPhone).get();
           if (clientDoc.exists && clientDoc.data()?['fcm_token'] != null) {
             await PushService.sendPushToToken(clientDoc.data()!['fcm_token'], 'Ответ от мастера', text);
@@ -124,8 +117,78 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         }
       }
     } catch (e) {
-      debugPrint('Ошибка отправки Push: $e');
+      debugPrint('Ошибка Push: $e');
     }
+  }
+
+  // --- ЛОГИКА РЕДАКТИРОВАНИЯ СООБЩЕНИЯ ---
+  void _editMessage(String messageId, String currentText) {
+    final editController = TextEditingController(text: currentText);
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Редактировать сообщение'),
+        content: TextField(
+          controller: editController,
+          maxLines: 3,
+          autofocus: true,
+          decoration: const InputDecoration(border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')),
+          ElevatedButton(
+            onPressed: () async {
+              final newText = editController.text.trim();
+              if (newText.isEmpty || newText == currentText) {
+                Navigator.pop(ctx);
+                return;
+              }
+              
+              Navigator.pop(ctx);
+              try {
+                await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).collection('messages').doc(messageId).update({
+                  'text': newText,
+                  'is_edited': true,
+                  'edit_history': FieldValue.arrayUnion([
+                    {'old_text': currentText, 'edited_at': DateTime.now()}
+                  ])
+                });
+              } catch (e) {
+                debugPrint('Ошибка редактирования: $e');
+              }
+            }, 
+            child: const Text('Сохранить')
+          )
+        ],
+      ),
+    );
+  }
+
+  void _showEditHistory(List<dynamic> history) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('История изменений', style: TextStyle(fontSize: 16)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: history.length,
+            itemBuilder: (context, index) {
+              final item = history[index];
+              final date = (item['edited_at'] as Timestamp?)?.toDate() ?? DateTime.now();
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(item['old_text'] ?? '', style: const TextStyle(decoration: TextDecoration.lineThrough, color: Colors.grey)),
+                subtitle: Text(DateFormat('dd.MM.yy HH:mm').format(date), style: const TextStyle(fontSize: 10)),
+              );
+            },
+          ),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Закрыть'))],
+      )
+    );
   }
 
   String _getFriendlyDate(DateTime date) {
@@ -139,54 +202,49 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   }
 
   Widget _buildMessageBubble(Map<String, dynamic> data, String messageId, bool isMe, DateTime dt, bool isSending, bool isDark) {
-    // Для групповых чатов показываем имя над сообщением (если это не мы)
     final bool showName = !isMe && widget.roomId.contains('team_');
+    final bool isEdited = data['is_edited'] == true;
+    final List<dynamic> editHistory = data['edit_history'] ?? [];
 
-    return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: EdgeInsets.only(left: isMe ? 50 : 10, right: isMe ? 10 : 50, top: 4, bottom: 4),
-        padding: const EdgeInsets.all(12),
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-        decoration: BoxDecoration(
-          color: isMe ? (isDark ? Colors.blue[900] : Colors.blue[100]) : (isDark ? Colors.grey[800] : Colors.white),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16), topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(isMe ? 16 : 4), bottomRight: Radius.circular(isMe ? 4 : 16),
+    return GestureDetector(
+      onLongPress: isMe && !isSending && data['image_base64'] == null ? () => _editMessage(messageId, data['text'] ?? '') : null,
+      onTap: isEdited ? () => _showEditHistory(editHistory) : null,
+      child: Align(
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: Container(
+          margin: EdgeInsets.only(left: isMe ? 50 : 10, right: isMe ? 10 : 50, top: 4, bottom: 4),
+          padding: const EdgeInsets.all(12),
+          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+          decoration: BoxDecoration(
+            color: isMe ? (isDark ? Colors.blue[900] : Colors.blue[100]) : (isDark ? Colors.grey[800] : Colors.white),
+            borderRadius: BorderRadius.only(topLeft: const Radius.circular(16), topRight: const Radius.circular(16), bottomLeft: Radius.circular(isMe ? 16 : 4), bottomRight: Radius.circular(isMe ? 4 : 16)),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(isDark ? 0.3 : 0.05), blurRadius: 2, offset: const Offset(0, 1))],
           ),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(isDark ? 0.3 : 0.05), blurRadius: 2, offset: const Offset(0, 1))],
-        ),
-        child: Column(
-          crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          children: [
-            if (showName)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Text(data['sender_name'] ?? 'Коллега', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue[700])),
-              ),
-            if (data['image_base64'] != null)
-              GestureDetector(
-                onTap: () => showDialog(
-                  context: context, builder: (_) => Dialog(backgroundColor: Colors.transparent, child: InteractiveViewer(child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.memory(base64Decode(data['image_base64']), fit: BoxFit.contain))))
+          child: Column(
+            crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            children: [
+              if (showName) Padding(padding: const EdgeInsets.only(bottom: 4), child: Text(data['sender_name'] ?? 'Коллега', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue[700]))),
+              
+              if (data['image_base64'] != null)
+                GestureDetector(
+                  onTap: () => showDialog(context: context, builder: (_) => Dialog(backgroundColor: Colors.transparent, child: InteractiveViewer(child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.memory(base64Decode(data['image_base64']), fit: BoxFit.contain))))),
+                  child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(base64Decode(data['image_base64']), height: 150, width: double.infinity, fit: BoxFit.cover))),
                 ),
-                child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(base64Decode(data['image_base64']), height: 150, width: double.infinity, fit: BoxFit.cover))),
+              
+              if (data['image_base64'] == null)
+                Text(data['text'] ?? '', style: TextStyle(fontSize: 16, color: isDark ? Colors.white : Colors.black87)),
+              
+              const SizedBox(height: 4),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isEdited) Padding(padding: const EdgeInsets.right(4), child: Text('(изм.)', style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: isDark ? Colors.white54 : Colors.grey[600]))),
+                  Text(isSending ? 'Отправка...' : DateFormat('HH:mm').format(dt), style: TextStyle(fontSize: 10, color: isDark ? Colors.white54 : Colors.grey[600])),
+                  if (isMe) ...[const SizedBox(width: 4), Icon(isSending ? Icons.access_time : (data['is_read'] == true ? Icons.done_all : Icons.check), size: 14, color: isSending ? Colors.grey : (data['is_read'] == true ? (isDark ? Colors.lightBlueAccent : Colors.blue) : Colors.grey))]
+                ],
               ),
-            
-            if (data['image_base64'] == null)
-              Text(data['text'] ?? '', style: TextStyle(fontSize: 16, color: isDark ? Colors.white : Colors.black87)),
-            
-            const SizedBox(height: 4),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(isSending ? 'Отправка...' : DateFormat('HH:mm').format(dt), style: TextStyle(fontSize: 10, color: isDark ? Colors.white54 : Colors.grey[600])),
-                if (isMe) ...[
-                  const SizedBox(width: 4),
-                  Icon(isSending ? Icons.access_time : (data['is_read'] == true ? Icons.done_all : Icons.check), size: 14, color: isSending ? Colors.grey : (data['is_read'] == true ? (isDark ? Colors.lightBlueAccent : Colors.blue) : Colors.grey)),
-                ]
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -199,21 +257,11 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     return Scaffold(
       backgroundColor: isDark ? Colors.grey[900] : Colors.grey[100],
       appBar: AppBar(
-        backgroundColor: isDark ? Colors.black : Colors.blueGrey[900],
-        foregroundColor: Colors.white,
+        backgroundColor: isDark ? Colors.black : Colors.blueGrey[900], foregroundColor: Colors.white,
         title: _isSearching
-            ? TextField(
-                controller: _searchController, autofocus: true, style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(hintText: 'Поиск по сообщениям...', hintStyle: TextStyle(color: Colors.white54), border: InputBorder.none),
-                onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
-              )
+            ? TextField(controller: _searchController, autofocus: true, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(hintText: 'Поиск по сообщениям...', hintStyle: TextStyle(color: Colors.white54), border: InputBorder.none), onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()))
             : Text(widget.targetName),
-        actions: [
-          IconButton(
-            icon: Icon(_isSearching ? Icons.close : Icons.search),
-            onPressed: () => setState(() { _isSearching = !_isSearching; if (!_isSearching) { _searchController.clear(); _searchQuery = ''; } }),
-          )
-        ],
+        actions: [IconButton(icon: Icon(_isSearching ? Icons.close : Icons.search), onPressed: () => setState(() { _isSearching = !_isSearching; if (!_isSearching) { _searchController.clear(); _searchQuery = ''; } }))],
       ),
       body: Column(
         children: [
@@ -223,12 +271,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
               builder: (context, snapshot) {
                 if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                 var messages = snapshot.data!.docs.toList();
-                if (_searchQuery.isNotEmpty) {
-                  messages = messages.where((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    return (data['text'] ?? '').toString().toLowerCase().contains(_searchQuery);
-                  }).toList();
-                }
+                if (_searchQuery.isNotEmpty) messages = messages.where((doc) => ((doc.data() as Map<String, dynamic>)['text'] ?? '').toString().toLowerCase().contains(_searchQuery)).toList();
                 if (messages.isEmpty) return Center(child: Text(_searchQuery.isNotEmpty ? 'Ничего не найдено' : 'Нет сообщений', style: const TextStyle(color: Colors.grey)));
                 
                 return ListView.builder(
@@ -241,10 +284,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                     final bool isSending = ts == null; 
                     
                     if (!isMe && data['is_read'] == false && !isSending) {
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        messages[i].reference.update({'is_read': true});
-                        FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({'unread_count': 0});
-                      });
+                      WidgetsBinding.instance.addPostFrameCallback((_) { messages[i].reference.update({'is_read': true}); FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).update({'unread_count': 0}); });
                     }
 
                     bool showDate = false;
@@ -275,7 +315,6 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
               },
             ),
           ),
-
           SafeArea(
             top: false,
             child: Container(
@@ -288,20 +327,13 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                     child: TextField(
                       controller: _controller, style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                       decoration: InputDecoration(hintText: 'Сообщение...', hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey), border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none), filled: true, fillColor: isDark ? Colors.grey[800] : Colors.grey[200], contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10)),
-                      maxLines: 3, minLines: 1, textCapitalization: TextCapitalization.sentences,
-                      onChanged: (text) => setState(() {}),
+                      maxLines: 3, minLines: 1, textCapitalization: TextCapitalization.sentences, onChanged: (text) => setState(() {}),
                     )
                   ),
                   const SizedBox(width: 8),
                   Container(
-                    decoration: BoxDecoration(
-                      color: _controller.text.trim().isNotEmpty ? Colors.blue[600] : Colors.grey[400], 
-                      shape: BoxShape.circle
-                    ), 
-                    child: IconButton(
-                      icon: const Icon(Icons.send, color: Colors.white), 
-                      onPressed: _controller.text.trim().isNotEmpty ? _sendTextMessage : null,
-                    )
+                    decoration: BoxDecoration(color: _controller.text.trim().isNotEmpty ? Colors.blue[600] : Colors.grey[400], shape: BoxShape.circle), 
+                    child: IconButton(icon: const Icon(Icons.send, color: Colors.white), onPressed: _controller.text.trim().isNotEmpty ? _sendTextMessage : null)
                   ),
                 ],
               ),
