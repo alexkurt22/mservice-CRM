@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -5,16 +6,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
-import 'package:http/http.dart' as http;
+import 'package:permission_handler/permission_handler.dart';
 
-// --- ОТДЕЛЬНЫЙ ЭКРАН ДЛЯ СКАНЕРА (ЧТОБЫ НЕ БЫЛО ЧЕРНОГО ЭКРАНА) ---
+// --- ПОЛНОЭКРАННЫЙ СКАНЕР ШТРИХКОДОВ ---
 class BarcodeScannerScreen extends StatelessWidget {
   const BarcodeScannerScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Наведите камеру на штрихкод'), backgroundColor: Colors.black, foregroundColor: Colors.white),
+      appBar: AppBar(title: const Text('Сканирование штрихкода'), backgroundColor: Colors.black, foregroundColor: Colors.white),
       body: MobileScanner(
         onDetect: (capture) {
           final List<Barcode> barcodes = capture.barcodes;
@@ -41,13 +42,6 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
-  // =========================================================================
-  // 🔐 ВСТАВЬ СВОИ КЛЮЧИ СЮДА:
-  // =========================================================================
-  final String _removeBgApiKey = 'uXvbPdpGGfrygCemepCx4Tg5'; 
-  final String _geminiApiKey = 'AQ.Ab8RN6K7e2RvnnhmLv-rBAcTr_6r4qG9ifeiZQFWxcv4_TWPEw';
-  // =========================================================================
-
   void _showAddProductDialog() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
@@ -58,105 +52,91 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
     final descController = TextEditingController();
     
     String condition = 'Новый'; 
-    Uint8List? selectedImageBytes; // Храним байты, так как API возвращает байты
+    Uint8List? selectedImageBytes;
     bool isSaving = false;
-    bool isProcessingImage = false;
     bool isGeneratingAI = false;
 
-    // --- ФУНКЦИЯ МАГИЧЕСКОЙ ОБРАБОТКИ ФОТО ---
-    Future<void> pickAndProcessImage(StateSetter setModalState) async {
+    Future<void> pickImage(StateSetter setModalState) async {
       try {
         final picker = ImagePicker();
         final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70, maxWidth: 800);
-        if (pickedFile == null) return;
-
-        setModalState(() => isProcessingImage = true);
-
-        // Если ключ не введен, просто сохраняем обычное фото
-        if (_removeBgApiKey == 'ТВОЙ_КЛЮЧ_REMOVE_BG') {
-          final bytes = await pickedFile.readAsBytes();
-          setModalState(() {
-            selectedImageBytes = bytes;
-            isProcessingImage = false;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ключ Remove.bg не найден. Фото загружено без изменений.')));
-          return;
-        }
-
-        // Отправляем ИИ на удаление фона и замену на белый
-        var request = http.MultipartRequest('POST', Uri.parse('https://api.remove.bg/v1.0/removebg'));
-        request.headers['X-Api-Key'] = _removeBgApiKey;
-        request.fields['bg_color'] = 'white'; // Делаем идеальный белый фон магазина
-        request.fields['size'] = 'regular'; 
-        request.files.add(await http.MultipartFile.fromPath('image_file', pickedFile.path));
-
-        var response = await request.send();
-        if (response.statusCode == 200) {
-          final bytes = await response.stream.toBytes();
-          setModalState(() => selectedImageBytes = bytes);
-        } else {
-          // Если ИИ не распознал объект, оставляем оригинал
+        if (pickedFile != null) {
           final bytes = await pickedFile.readAsBytes();
           setModalState(() => selectedImageBytes = bytes);
-          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Не удалось удалить фон. Оставлен оригинал.'), backgroundColor: Colors.orange));
         }
       } catch (e) {
-        debugPrint('Ошибка обработки фото: $e');
-      } finally {
-        setModalState(() => isProcessingImage = false);
+        debugPrint('Ошибка выбора фото: $e');
       }
     }
 
-    // --- ФУНКЦИЯ ГЕНЕРАЦИИ ОПИСАНИЯ ---
+    // --- ГЕНЕРАЦИЯ ОПИСАНИЯ ЧЕРЕЗ GEMINI С БЕЗОПАСНЫМ КЛЮЧОМ ---
     Future<void> generateDescriptionWithAI(StateSetter setModalState) async {
-      if (_geminiApiKey == 'ТВОЙ_КЛЮЧ_GEMINI') {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Вставьте ключ Gemini в код!'), backgroundColor: Colors.red));
+      // Ключ подтягивается автоматически из GitHub Secrets при сборке APK!
+      const apiKey = String.fromEnvironment('GEMINI_API_KEY', defaultValue: '');
+
+      if (apiKey.isEmpty) {
+        showDialog(
+          context: context, 
+          builder: (ctx) => AlertDialog(
+            title: const Text('Ошибка ключа'), 
+            content: const Text('API-ключ Gemini не был передан при сборке (проверьте GitHub Secrets).'),
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ОК'))],
+          ),
+        );
         return;
       }
 
       setModalState(() => isGeneratingAI = true);
 
       try {
-        final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: _geminiApiKey);
-        
+        final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: apiKey);
         String prompt = 'Напиши красивое, короткое и продающее описание для этого товара. Укажи его преимущества для покупателя. Текст на русском языке, без воды, буквально 3-4 предложения для интернет-магазина.';
         
         if (nameController.text.trim().isNotEmpty) {
           prompt += ' Товар называется: "${nameController.text.trim()}".';
         } else {
-          prompt += ' Также определи, что это за товар, и напиши его название в самом начале описания.';
+          prompt += ' Также определи, что это за товар, и напиши его название в начале.';
         }
 
         List<Content> content = [];
         if (selectedImageBytes != null) {
-           content.add(Content.multi([
-             TextPart(prompt),
-             DataPart('image/jpeg', selectedImageBytes!)
-           ]));
+           content.add(Content.multi([TextPart(prompt), DataPart('image/jpeg', selectedImageBytes!)]));
         } else {
            content.add(Content.text(prompt));
         }
         
         final response = await model.generateContent(content);
-        
         if (response.text != null) {
-          setModalState(() {
-            descController.text = response.text!.replaceAll(RegExp(r'\*+'), ''); // Убираем звездочки маркдауна
-          });
+          setModalState(() => descController.text = response.text!.replaceAll(RegExp(r'\*+'), '')); 
         }
       } catch (e) {
         if (context.mounted) {
           showDialog(
-            context: context,
+            context: context, 
             builder: (ctx) => AlertDialog(
-              title: const Text('Сбой нейросети', style: TextStyle(color: Colors.red)),
-              content: Text('Ошибка Gemini:\n\n$e'),
+              title: const Text('Ошибка ИИ', style: TextStyle(color: Colors.red)),
+              content: Text(e.toString()),
               actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ОК'))],
-            )
+            ),
           );
         }
       } finally {
         setModalState(() => isGeneratingAI = false);
+      }
+    }
+
+    Future<void> openBarcodeScanner(StateSetter setModalState) async {
+      var status = await Permission.camera.request();
+      if (status.isGranted) {
+        if (!context.mounted) return;
+        var res = await Navigator.push(context, MaterialPageRoute(builder: (context) => const BarcodeScannerScreen()));
+        if (res is String && res.isNotEmpty) {
+          setModalState(() => barcodeController.text = res);
+        }
+      } else {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Нет доступа к камере! Разрешите в настройках телефона.'), backgroundColor: Colors.red));
+        }
       }
     }
 
@@ -169,10 +149,7 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setModalState) {
           return Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(ctx).viewInsets.bottom + 20, 
-              left: 16, right: 16, top: 16
-            ),
+            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom + 20, left: 16, right: 16, top: 16),
             child: FractionallySizedBox(
               heightFactor: 0.92,
               child: SingleChildScrollView(
@@ -184,25 +161,22 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                     Text('Добавление товара', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87), textAlign: TextAlign.center),
                     const SizedBox(height: 16),
 
-                    // МАГИЧЕСКОЕ ФОТО ТОВАРА
                     GestureDetector(
-                      onTap: () => pickAndProcessImage(setModalState),
+                      onTap: () => pickImage(setModalState),
                       child: Center(
                         child: Container(
                           height: 120,
                           width: 120, 
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: isDark ? Colors.grey[800] : Colors.white,
+                            color: isDark ? Colors.grey[800] : Colors.grey[200],
                             borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: isDark ? Colors.grey[700]! : Colors.blueGrey[200]!, width: 2),
+                            border: Border.all(color: isDark ? Colors.grey[700]! : Colors.grey[300]!, width: 2),
                             image: selectedImageBytes != null ? DecorationImage(image: MemoryImage(selectedImageBytes!), fit: BoxFit.cover) : null,
                           ),
-                          child: isProcessingImage 
-                              ? const CircularProgressIndicator(color: Colors.blue)
-                              : selectedImageBytes == null 
-                                  ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.auto_fix_high, size: 32, color: Colors.blueGrey[400]), const SizedBox(height: 4), Text('ИИ-Фон', style: TextStyle(color: Colors.blueGrey[400], fontSize: 12, fontWeight: FontWeight.bold))])
-                                  : null,
+                          child: selectedImageBytes == null 
+                              ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_a_photo, size: 32, color: Colors.blueGrey[400]), const SizedBox(height: 4), Text('Фото', style: TextStyle(color: Colors.blueGrey[400], fontSize: 12, fontWeight: FontWeight.bold))])
+                              : null,
                         ),
                       ),
                     ),
@@ -255,15 +229,7 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                               border: const OutlineInputBorder(),
                               suffixIcon: IconButton(
                                 icon: const Icon(Icons.qr_code_scanner, color: Colors.blue),
-                                onPressed: () async {
-                                  // --- ЗАПУСК ПОЛНОЭКРАННОГО СКАНЕРА ---
-                                  var res = await Navigator.push(context, MaterialPageRoute(builder: (context) => const BarcodeScannerScreen()));
-                                  if (res is String && res.isNotEmpty) {
-                                    setModalState(() {
-                                      barcodeController.text = res;
-                                    });
-                                  }
-                                }, 
+                                onPressed: () => openBarcodeScanner(setModalState), 
                               ),
                             ),
                           ),
