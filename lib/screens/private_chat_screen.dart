@@ -216,6 +216,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
            'master_accepted': true,
            'status': 'in_progress', 
            'has_unread_update': true,
+           'accepted_at': FieldValue.serverTimestamp(),
         });
         await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).collection('messages').doc(messageId).update({
            'is_order_accepted': true,
@@ -253,7 +254,6 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         
         // ЛОГИКА БЛОКИРОВКИ ВХОДА В ЗАКАЗ
         if (isOrderInvite && orderId != null) {
-          // Если заказ еще не принят и ты не тот, кто его отправил (не админ) - блокируем вход!
           if (!isOrderAccepted && !isMe) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -261,9 +261,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 backgroundColor: Colors.red
               )
             );
-            return; // Прерываем код, окно деталей не откроется
+            return; 
           }
-          // Если заказ уже принят или кликает сам админ - открываем детали
           _openOrderDetails(orderId);
         }
       },
@@ -326,7 +325,8 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (isEdited) Padding(padding: const EdgeInsets.only(right: 4), child: Text('(изм.)', style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: isDark ? Colors.white54 : Colors.grey[600]))),
+                  // ИСПРАВЛЕНА ОШИБКА EdgeInsets.right -> EdgeInsets.only(right: 4)
+                  if (isEdited) Padding(padding: const EdgeInsets.only(right: 4.0), child: Text('(изм.)', style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: isDark ? Colors.white54 : Colors.grey[600]))),
                   Text(isSending ? 'Отправка...' : DateFormat('HH:mm').format(dt), style: TextStyle(fontSize: 10, color: isDark ? Colors.white54 : Colors.grey[600])),
                   if (isMe) ...[const SizedBox(width: 4), Icon(isSending ? Icons.access_time : (data['is_read'] == true ? Icons.done_all : Icons.check), size: 14, color: isSending ? Colors.grey : (data['is_read'] == true ? (isDark ? Colors.lightBlueAccent : Colors.blue) : Colors.grey))]
                 ],
@@ -432,3 +432,4 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     );
   }
 }
+
