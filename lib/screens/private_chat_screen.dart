@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/push_service.dart';
+import 'order_details_screen.dart'; 
 
 class PrivateChatScreen extends StatefulWidget {
   final String roomId;
@@ -61,9 +62,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
   Future<void> _pickAndSendImage() async {
     try {
-      final pickedFile = await _imagePicker.pickImage(
-        source: ImageSource.gallery, imageQuality: 40, maxWidth: 800, maxHeight: 800
-      );
+      final pickedFile = await _imagePicker.pickImage(source: ImageSource.gallery, imageQuality: 40, maxWidth: 800, maxHeight: 800);
       if (pickedFile != null) {
         final bytes = await File(pickedFile.path).readAsBytes();
         final base64Image = base64Encode(bytes);
@@ -121,7 +120,6 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     }
   }
 
-  // --- ЛОГИКА РЕДАКТИРОВАНИЯ СООБЩЕНИЯ ---
   void _editMessage(String messageId, String currentText) {
     final editController = TextEditingController(text: currentText);
     
@@ -144,19 +142,12 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
                 Navigator.pop(ctx);
                 return;
               }
-              
               Navigator.pop(ctx);
               try {
                 await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).collection('messages').doc(messageId).update({
-                  'text': newText,
-                  'is_edited': true,
-                  'edit_history': FieldValue.arrayUnion([
-                    {'old_text': currentText, 'edited_at': DateTime.now()}
-                  ])
+                  'text': newText, 'is_edited': true, 'edit_history': FieldValue.arrayUnion([{'old_text': currentText, 'edited_at': DateTime.now()}])
                 });
-              } catch (e) {
-                debugPrint('Ошибка редактирования: $e');
-              }
+              } catch (e) { debugPrint('Ошибка редактирования: $e'); }
             }, 
             child: const Text('Сохранить')
           )
@@ -173,22 +164,67 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         content: SizedBox(
           width: double.maxFinite,
           child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: history.length,
+            shrinkWrap: true, itemCount: history.length,
             itemBuilder: (context, index) {
               final item = history[index];
               final date = (item['edited_at'] as Timestamp?)?.toDate() ?? DateTime.now();
-              return ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(item['old_text'] ?? '', style: const TextStyle(decoration: TextDecoration.lineThrough, color: Colors.grey)),
-                subtitle: Text(DateFormat('dd.MM.yy HH:mm').format(date), style: const TextStyle(fontSize: 10)),
-              );
+              return ListTile(contentPadding: EdgeInsets.zero, title: Text(item['old_text'] ?? '', style: const TextStyle(decoration: TextDecoration.lineThrough, color: Colors.grey)), subtitle: Text(DateFormat('dd.MM.yy HH:mm').format(date), style: const TextStyle(fontSize: 10)));
             },
           ),
         ),
         actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Закрыть'))],
       )
     );
+  }
+
+  Future<void> _openOrderDetails(String orderId) async {
+    showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator()));
+    try {
+      final doc = await FirebaseFirestore.instance.collection('orders').doc(orderId).get();
+      if (mounted) {
+        Navigator.pop(context); 
+        if (doc.exists) {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => OrderDetailsScreen(orderId: orderId, orderData: doc.data() as Map<String, dynamic>)));
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Заказ удален или не найден')));
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e')));
+      }
+    }
+  }
+
+  Future<void> _acceptOrder(String messageId, String orderId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Подтверждение'),
+        content: const Text('Вы принимаете заявку в работу?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Отмена', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.green), onPressed: () => Navigator.pop(ctx, true), child: const Text('Да, принимаю', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+        ]
+      )
+    );
+
+    if (confirm == true) {
+      try {
+        await FirebaseFirestore.instance.collection('orders').doc(orderId).update({
+           'master_accepted': true,
+           'status': 'in_progress', 
+           'has_unread_update': true,
+        });
+        await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).collection('messages').doc(messageId).update({
+           'is_order_accepted': true,
+        });
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Заказ принят в работу!'), backgroundColor: Colors.green));
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red));
+      }
+    }
   }
 
   String _getFriendlyDate(DateTime date) {
@@ -205,16 +241,38 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     final bool showName = !isMe && widget.roomId.contains('team_');
     final bool isEdited = data['is_edited'] == true;
     final List<dynamic> editHistory = data['edit_history'] ?? [];
+    
+    final bool isOrderInvite = data['is_order_invite'] == true;
+    final String? orderId = data['order_id'];
+    final bool isOrderAccepted = data['is_order_accepted'] == true;
 
     return GestureDetector(
-      onLongPress: isMe && !isSending && data['image_base64'] == null ? () => _editMessage(messageId, data['text'] ?? '') : null,
-      onTap: isEdited ? () => _showEditHistory(editHistory) : null,
+      onLongPress: isMe && !isSending && data['image_base64'] == null && !isOrderInvite ? () => _editMessage(messageId, data['text'] ?? '') : null,
+      onTap: () {
+        if (isEdited) _showEditHistory(editHistory);
+        
+        // ЛОГИКА БЛОКИРОВКИ ВХОДА В ЗАКАЗ
+        if (isOrderInvite && orderId != null) {
+          // Если заказ еще не принят и ты не тот, кто его отправил (не админ) - блокируем вход!
+          if (!isOrderAccepted && !isMe) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Сначала примите заявку в работу, нажав зеленую кнопку ниже!', style: TextStyle(fontWeight: FontWeight.bold)), 
+                backgroundColor: Colors.red
+              )
+            );
+            return; // Прерываем код, окно деталей не откроется
+          }
+          // Если заказ уже принят или кликает сам админ - открываем детали
+          _openOrderDetails(orderId);
+        }
+      },
       child: Align(
         alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
         child: Container(
           margin: EdgeInsets.only(left: isMe ? 50 : 10, right: isMe ? 10 : 50, top: 4, bottom: 4),
           padding: const EdgeInsets.all(12),
-          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.80),
           decoration: BoxDecoration(
             color: isMe ? (isDark ? Colors.blue[900] : Colors.blue[100]) : (isDark ? Colors.grey[800] : Colors.white),
             borderRadius: BorderRadius.only(topLeft: const Radius.circular(16), topRight: const Radius.circular(16), bottomLeft: Radius.circular(isMe ? 16 : 4), bottomRight: Radius.circular(isMe ? 4 : 16)),
@@ -225,14 +283,44 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
             children: [
               if (showName) Padding(padding: const EdgeInsets.only(bottom: 4), child: Text(data['sender_name'] ?? 'Коллега', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue[700]))),
               
-              if (data['image_base64'] != null)
-                GestureDetector(
-                  onTap: () => showDialog(context: context, builder: (_) => Dialog(backgroundColor: Colors.transparent, child: InteractiveViewer(child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.memory(base64Decode(data['image_base64']), fit: BoxFit.contain))))),
-                  child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(base64Decode(data['image_base64']), height: 150, width: double.infinity, fit: BoxFit.cover))),
-                ),
-              
-              if (data['image_base64'] == null)
-                Text(data['text'] ?? '', style: TextStyle(fontSize: 16, color: isDark ? Colors.white : Colors.black87)),
+              if (isOrderInvite) ...[
+                 Container(
+                   padding: const EdgeInsets.all(12),
+                   decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.orange)),
+                   child: Column(
+                     crossAxisAlignment: CrossAxisAlignment.start,
+                     children: [
+                        const Row(children: [Icon(Icons.assignment, color: Colors.orange), SizedBox(width: 8), Text('НАЗНАЧЕН ЗАКАЗ', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange))]),
+                        const SizedBox(height: 8),
+                        Text(data['text'] ?? '', style: TextStyle(fontSize: 14, color: isDark ? Colors.white : Colors.black87)),
+                        const SizedBox(height: 12),
+                        
+                        if (!isOrderAccepted && !isMe) ...[
+                           SizedBox(
+                             width: double.infinity,
+                             child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                                onPressed: () => _acceptOrder(messageId, orderId!),
+                                child: const Text('ПРИНЯТЬ ЗАЯВКУ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+                             )
+                           )
+                        ] else if (isOrderAccepted) ...[
+                           const Row(children: [Icon(Icons.check_circle, color: Colors.green), SizedBox(width: 8), Text('Заявка принята', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold))])
+                        ] else if (!isOrderAccepted && isMe) ...[
+                           const Row(children: [Icon(Icons.access_time, color: Colors.orange), SizedBox(width: 8), Text('Ожидает подтверждения мастера', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 12))])
+                        ]
+                     ]
+                   )
+                 )
+              ] else ...[
+                if (data['image_base64'] != null)
+                  GestureDetector(
+                    onTap: () => showDialog(context: context, builder: (_) => Dialog(backgroundColor: Colors.transparent, child: InteractiveViewer(child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.memory(base64Decode(data['image_base64']), fit: BoxFit.contain))))),
+                    child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(base64Decode(data['image_base64']), height: 150, width: double.infinity, fit: BoxFit.cover))),
+                  ),
+                if (data['image_base64'] == null)
+                  Text(data['text'] ?? '', style: TextStyle(fontSize: 16, color: isDark ? Colors.white : Colors.black87)),
+              ],
               
               const SizedBox(height: 4),
               Row(
