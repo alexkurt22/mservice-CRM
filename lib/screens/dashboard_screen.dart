@@ -16,7 +16,8 @@ import 'tasks_screen.dart';
 import 'bulk_push_screen.dart'; 
 import 'admin_notes_screen.dart';
 import 'content_manager_screen.dart';
-import 'store_management_screen.dart'; // <--- ДОБАВЛЕН ИМПОРТ МАГАЗИНА
+import 'store_management_screen.dart';
+import 'cash_register_screen.dart'; // <--- ИМПОРТ НОВОГО ЭКРАНА КАССЫ
 import 'login_screen.dart'; 
 
 class DashboardScreen extends StatefulWidget {
@@ -91,7 +92,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  // --- ФУНКЦИЯ БЕЗОПАСНОГО ВЫХОДА БЕЗ FIREBASE AUTH ---
   Future<void> _signOut() async {
     final bool? confirm = await showDialog<bool>(
       context: context,
@@ -167,13 +167,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   if (_hasPermission('view_finance'))
                     ListTile(leading: Icon(Icons.bar_chart, color: isDark ? Colors.white70 : Colors.blueGrey[700]), title: Text('Статистика', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const StatisticsScreen())); }),
 
+                  // --- КНОПКА КАССЫ (ДОСТУПНА ВСЕМ) ---
+                  ListTile(
+                    leading: const Icon(Icons.account_balance_wallet, color: Colors.green), 
+                    title: Text('Касса и Долги', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), 
+                    onTap: () { 
+                      Navigator.pop(context); 
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const CashRegisterScreen())); 
+                    }
+                  ),
+
                   if (_hasPermission('send_push'))
                     ListTile(leading: Icon(Icons.send_to_mobile, color: isDark ? Colors.white70 : Colors.blueGrey[700]), title: Text('Создать рассылку', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const BulkPushScreen())); }),
                   
                   ListTile(leading: Icon(Icons.edit_note, color: isDark ? Colors.white70 : Colors.blueGrey[700]), title: Text('Заметки', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminNotesScreen())); }),
                   
                   if (_hasPermission('manage_settings')) ...[
-                    // --- КНОПКА МАГАЗИНА ---
                     ListTile(leading: Icon(Icons.storefront, color: isDark ? Colors.green[300] : Colors.green[700]), title: Text('Магазин и Склад', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const StoreManagementScreen())); }),
                     
                     ListTile(leading: Icon(Icons.dynamic_feed, color: isDark ? Colors.pink[300] : Colors.pink[600]), title: Text('Контент и Новости', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const ContentManagerScreen())); }),
@@ -183,7 +192,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
             
-            // --- КНОПКА ОЧИСТКИ БАЗЫ ДЛЯ ВЛАДЕЛЬЦА ---
             if (_myRole == 'Владелец') ...[
               Divider(height: 1, color: isDark ? Colors.grey[800] : Colors.grey[300]),
               ListTile(
@@ -194,7 +202,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ],
 
-            // --- КНОПКА ВЫХОДА ДЛЯ ВСЕХ ---
             Divider(height: 1, color: isDark ? Colors.grey[800] : Colors.grey[300]),
             ListTile(
               leading: const Icon(Icons.exit_to_app, color: Colors.red),
