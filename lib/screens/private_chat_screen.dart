@@ -20,6 +20,7 @@ class PrivateChatScreen extends StatefulWidget {
 class _PrivateChatScreenState extends State<PrivateChatScreen> {
   final TextEditingController _controller = TextEditingController();
   String? _myPhone;
+  String _myName = "Сотрудник";
 
   bool _isSearching = false;
   String _searchQuery = '';
@@ -30,7 +31,7 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   @override
   void initState() {
     super.initState();
-    _getMyPhone();
+    _loadMyData();
   }
 
   @override
@@ -40,9 +41,16 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     super.dispose();
   }
 
-  Future<void> _getMyPhone() async {
+  Future<void> _loadMyData() async {
     final prefs = await SharedPreferences.getInstance();
-    if (mounted) setState(() => _myPhone = prefs.getString('employee_phone') ?? 'admin');
+    final phone = prefs.getString('employee_phone') ?? 'admin';
+    if (mounted) setState(() => _myPhone = phone);
+
+    // Подтягиваем имя, чтобы в группе было видно, кто пишет
+    final doc = await FirebaseFirestore.instance.collection('employees').doc(phone).get();
+    if (doc.exists && mounted) {
+      setState(() => _myName = doc.data()?['name'] ?? "Сотрудник");
+    }
   }
 
   Future<void> _sendTextMessage() async {
@@ -52,7 +60,6 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     await _sendMessageToDb(text: text);
   }
 
-  // --- ЖЕСТКОЕ СЖАТИЕ ФОТО ДЛЯ FIRESTORE ---
   Future<void> _pickAndSendImage() async {
     try {
       final pickedFile = await _imagePicker.pickImage(
@@ -72,9 +79,11 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   }
 
   Future<void> _sendMessageToDb({required String text, String? imageBase64}) async {
+    // Добавили sender_name для групповых чатов
     await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).collection('messages').add({
       'text': text,
       'sender_phone': _myPhone,
+      'sender_name': _myName,
       'created_at': FieldValue.serverTimestamp(),
       'is_read': false,
       if (imageBase64 != null) 'image_base64': imageBase64,
@@ -89,16 +98,25 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
 
     try {
       final roomDoc = await FirebaseFirestore.instance.collection('chat_rooms').doc(widget.roomId).get();
-      final parts = List<String>.from(roomDoc.data()?['participants'] ?? []);
-      final targetPhone = parts.firstWhere((p) => p != _myPhone, orElse: () => '');
+      final roomData = roomDoc.data();
+      if (roomData == null) return;
 
-      if (targetPhone.isNotEmpty) {
-        if (widget.roomId.contains('team_')) {
+      final parts = List<String>.from(roomData['participants'] ?? []);
+      final isGroup = roomData['is_group'] == true;
+      final groupName = roomData['group_name'] ?? widget.targetName;
+
+      // Рассылаем Push-уведомления ВСЕМ участникам, кроме себя
+      for (String targetPhone in parts) {
+        if (targetPhone == _myPhone) continue;
+
+        if (widget.roomId.contains('team_') || isGroup) {
           final empDoc = await FirebaseFirestore.instance.collection('employees').doc(targetPhone).get();
           if (empDoc.exists && empDoc.data()?['fcm_token'] != null) {
-            await PushService.sendPushToToken(empDoc.data()!['fcm_token'], 'Новое сообщение от коллеги', text);
+            String pushTitle = isGroup ? 'Группа "$groupName"' : 'Сообщение от $_myName';
+            await PushService.sendPushToToken(empDoc.data()!['fcm_token'], pushTitle, text);
           }
         } else {
+          // Чат с клиентом
           final clientDoc = await FirebaseFirestore.instance.collection('clients').doc(targetPhone).get();
           if (clientDoc.exists && clientDoc.data()?['fcm_token'] != null) {
             await PushService.sendPushToToken(clientDoc.data()!['fcm_token'], 'Ответ от мастера', text);
@@ -121,6 +139,9 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
   }
 
   Widget _buildMessageBubble(Map<String, dynamic> data, String messageId, bool isMe, DateTime dt, bool isSending, bool isDark) {
+    // Для групповых чатов показываем имя над сообщением (если это не мы)
+    final bool showName = !isMe && widget.roomId.contains('team_');
+
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -138,6 +159,11 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
         child: Column(
           crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
+            if (showName)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(data['sender_name'] ?? 'Коллега', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue[700])),
+              ),
             if (data['image_base64'] != null)
               GestureDetector(
                 onTap: () => showDialog(
@@ -286,3 +312,4 @@ class _PrivateChatScreenState extends State<PrivateChatScreen> {
     );
   }
 }
+
