@@ -455,9 +455,19 @@ class _AdminNotesScreenState extends State<AdminNotesScreen> {
 
                 var docs = snapshot.data!.docs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
+                  
+                  // ПРИВОДИМ ВСЁ К НИЖНЕМУ РЕГИСТРУ ДЛЯ ИДЕАЛЬНОГО ПОИСКА
                   final title = (data['title'] ?? '').toString().toLowerCase();
                   final content = (data['content'] ?? '').toString().toLowerCase();
-                  final tags = (data['tags'] as List<dynamic>? ?? []).join(' ').toLowerCase();
+                  
+                  // Собираем чек-лист в одну строку
+                  final checklistArr = data['checklist'] as List<dynamic>? ?? [];
+                  final checklistStr = checklistArr.join(' ').toLowerCase();
+
+                  // Собираем теги
+                  final tagsArr = data['tags'] as List<dynamic>? ?? [];
+                  final tagsStr = tagsArr.join(' ').toLowerCase();
+                  
                   final category = data['category'] ?? 'Другое';
 
                   bool matchesCategory = _selectedCategory == 'Все' || category == _selectedCategory;
@@ -465,10 +475,9 @@ class _AdminNotesScreenState extends State<AdminNotesScreen> {
 
                   // --- УМНЫЙ МНОГОСЛОВНЫЙ ПОИСК ---
                   if (_searchQuery.isNotEmpty) {
-                    final searchWords = _searchQuery.split(RegExp(r'\s+')); // Разбиваем запрос на слова по пробелу
-                    final searchableText = '$title $content $tags $category';
+                    final searchWords = _searchQuery.split(RegExp(r'\s+')); 
+                    final searchableText = '$title $content $checklistStr $tagsStr $category';
                     
-                    // Статья должна содержать ВСЕ слова из поиска
                     for (var word in searchWords) {
                       if (!searchableText.contains(word)) {
                         return false; 
