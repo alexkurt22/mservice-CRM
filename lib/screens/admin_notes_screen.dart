@@ -137,6 +137,18 @@ class _AdminNotesScreenState extends State<AdminNotesScreen> {
     String? currentImageBase64 = initialData?['image_base64'];
     bool isSaving = false;
 
+    Future<void> pickImage(StateSetter setModalState) async {
+      try {
+        final pickedFile = await _imagePicker.pickImage(source: ImageSource.gallery, imageQuality: 50, maxWidth: 800);
+        if (pickedFile != null) {
+          final bytes = await File(pickedFile.path).readAsBytes();
+          setModalState(() => currentImageBase64 = base64Encode(bytes));
+        }
+      } catch (e) {
+        debugPrint('Ошибка выбора фото: $e');
+      }
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -173,15 +185,8 @@ class _AdminNotesScreenState extends State<AdminNotesScreen> {
                       TextField(controller: tagsController, style: TextStyle(color: isDark ? Colors.white : Colors.black87), decoration: InputDecoration(labelText: 'Теги (через запятую: hp, ошибка 5b00)', labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey), border: const OutlineInputBorder(), prefixIcon: const Icon(Icons.tag))),
                       const SizedBox(height: 12),
                       
-                      // Фото
                       GestureDetector(
-                        onTap: () async {
-                          final pickedFile = await _imagePicker.pickImage(source: ImageSource.gallery, imageQuality: 50, maxWidth: 800);
-                          if (pickedFile != null) {
-                            final bytes = await File(pickedFile.path).readAsBytes();
-                            setSheetState(() => currentImageBase64 = base64Encode(bytes));
-                          }
-                        },
+                        onTap: () => pickImage(setSheetState),
                         child: Container(
                           height: 150,
                           decoration: BoxDecoration(color: isDark ? Colors.grey[800] : Colors.grey[200], borderRadius: BorderRadius.circular(12), border: Border.all(color: isDark ? Colors.grey[700]! : Colors.grey[300]!), image: currentImageBase64 != null ? DecorationImage(image: MemoryImage(base64Decode(currentImageBase64!)), fit: BoxFit.cover) : null),
@@ -263,8 +268,8 @@ class _AdminNotesScreenState extends State<AdminNotesScreen> {
     );
   }
 
-  // --- МАГИЯ ИИ: УМНЫЙ ИМПОРТ ---
-  void _showAIImportDialog() {
+  // --- МАССОВЫЙ ИМПОРТ ИЗ JSON ---
+  void _showMassJSONImportDialog() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textController = TextEditingController();
     bool isProcessing = false;
@@ -278,22 +283,22 @@ class _AdminNotesScreenState extends State<AdminNotesScreen> {
             backgroundColor: Theme.of(context).cardColor,
             title: Row(
               children: [
-                const Icon(Icons.auto_awesome, color: Colors.deepPurpleAccent),
+                const Icon(Icons.data_object, color: Colors.blueAccent),
                 const SizedBox(width: 8),
-                Text('Умный Импорт', style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold, fontSize: 18)),
+                Text('Массовый импорт JSON', style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold, fontSize: 16)),
               ],
             ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('Скопируйте кусок текста с форума, мануала или сайта. ИИ сам структурирует его в красивую статью с чек-листами и тегами.', style: TextStyle(fontSize: 12, color: isDark ? Colors.white70 : Colors.blueGrey)),
+                Text('Вставьте JSON массив. Ожидаемые поля: title, content, category, tags, checklist.', style: TextStyle(fontSize: 12, color: isDark ? Colors.white70 : Colors.blueGrey)),
                 const SizedBox(height: 16),
                 TextField(
                   controller: textController,
-                  maxLines: 8,
-                  style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13),
+                  maxLines: 10,
+                  style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 11, fontFamily: 'monospace'),
                   decoration: InputDecoration(
-                    hintText: 'Вставьте текст сюда...',
+                    hintText: '[{"title": "...", "content": "..."}]',
                     hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey),
                     border: const OutlineInputBorder(),
                     filled: true,
@@ -305,48 +310,43 @@ class _AdminNotesScreenState extends State<AdminNotesScreen> {
             actions: [
               if (!isProcessing) TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена', style: TextStyle(color: Colors.grey))),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurpleAccent, foregroundColor: Colors.white),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white),
                 onPressed: isProcessing ? null : () async {
                   if (textController.text.trim().isEmpty) return;
                   setDialogState(() => isProcessing = true);
                   
                   try {
-                    const apiKey = String.fromEnvironment('GEMINI_API_KEY', defaultValue: '');
-                    if (apiKey.isEmpty) throw Exception('API ключ Gemini не найден');
+                    final List<dynamic> parsedList = jsonDecode(textController.text.trim());
+                    final batch = FirebaseFirestore.instance.batch();
+                    final collection = FirebaseFirestore.instance.collection('admin_notes');
 
-                    final model = GenerativeModel(model: 'gemini-flash-latest', apiKey: apiKey);
-                    final prompt = '''
-                    Проанализируй следующий текст и преврати его в статью для Базы Знаний сервисного центра.
-                    Верни строго валидный JSON (без маркдауна и лишних символов), в котором будут следующие поля:
-                    {
-                      "title": "Краткий заголовок проблемы/инструкции",
-                      "category": "Одна из категорий: Принтеры, Ноутбуки, Смартфоны, ПК и Железо, Программное обеспечение, Сети, Другое",
-                      "tags": ["тег1", "тег2", "код_ошибки"],
-                      "content": "Подробное текстовое описание решения без воды",
-                      "checklist": ["шаг 1", "шаг 2"] // массив шагов, если применимо, иначе пустой массив []
+                    for (var item in parsedList) {
+                      if (item is Map<String, dynamic>) {
+                        final docRef = collection.doc();
+                        batch.set(docRef, {
+                          'title': item['title'] ?? 'Без заголовка',
+                          'content': item['content'] ?? '',
+                          'category': item['category'] ?? 'Другое',
+                          'tags': item['tags'] ?? [],
+                          'checklist': item['checklist'] ?? [],
+                          'created_at': FieldValue.serverTimestamp(),
+                          'updated_at': FieldValue.serverTimestamp(),
+                        });
+                      }
                     }
-                    Текст:
-                    ${textController.text}
-                    ''';
 
-                    final response = await model.generateContent([Content.text(prompt)]);
-                    String jsonString = response.text ?? '{}';
-                    
-                    // Очистка от маркдауна (если ИИ обернет ответ в ```json)
-                    jsonString = jsonString.replaceAll(RegExp(r'```json\n?'), '').replaceAll(RegExp(r'```'), '').trim();
-                    
-                    final Map<String, dynamic> generatedData = jsonDecode(jsonString);
+                    await batch.commit();
 
                     if (mounted) {
-                      Navigator.pop(ctx); // Закрываем диалог импорта
-                      _showNoteEditor(initialData: generatedData); // Открываем редактор с готовыми данными для проверки!
+                      Navigator.pop(ctx); 
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Успешно импортировано ${parsedList.length} статей!'), backgroundColor: Colors.green));
                     }
                   } catch (e) {
                     setDialogState(() => isProcessing = false);
-                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка ИИ: $e'), backgroundColor: Colors.red));
+                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка JSON: $e'), backgroundColor: Colors.red));
                   }
                 },
-                child: isProcessing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('СГЕНЕРИРОВАТЬ СТАТЬЮ'),
+                child: isProcessing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('ЗАГРУЗИТЬ'),
               )
             ],
           );
@@ -390,7 +390,7 @@ class _AdminNotesScreenState extends State<AdminNotesScreen> {
                 controller: _searchController,
                 autofocus: true,
                 style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(hintText: 'Поиск по заголовкам, тегам, тексту...', hintStyle: TextStyle(color: Colors.white54), border: InputBorder.none),
+                decoration: const InputDecoration(hintText: 'Поиск (например: hp 59.f0)', hintStyle: TextStyle(color: Colors.white54), border: InputBorder.none),
                 onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
               )
             : const Text('База знаний', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -406,10 +406,10 @@ class _AdminNotesScreenState extends State<AdminNotesScreen> {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           FloatingActionButton(
-            heroTag: 'ai_import_btn',
-            onPressed: _showAIImportDialog,
-            backgroundColor: Colors.deepPurpleAccent,
-            child: const Icon(Icons.auto_awesome, color: Colors.white),
+            heroTag: 'json_import_btn',
+            onPressed: _showMassJSONImportDialog,
+            backgroundColor: Colors.deepOrangeAccent,
+            child: const Icon(Icons.data_object, color: Colors.white),
           ),
           const SizedBox(height: 12),
           FloatingActionButton.extended(
@@ -423,7 +423,6 @@ class _AdminNotesScreenState extends State<AdminNotesScreen> {
       ),
       body: Column(
         children: [
-          // Категории
           Container(
             height: 50,
             decoration: BoxDecoration(color: Theme.of(context).cardColor, boxShadow: [BoxShadow(color: Colors.black.withOpacity(isDark ? 0.3 : 0.05), blurRadius: 4, offset: const Offset(0, 2))]),
@@ -461,10 +460,23 @@ class _AdminNotesScreenState extends State<AdminNotesScreen> {
                   final tags = (data['tags'] as List<dynamic>? ?? []).join(' ').toLowerCase();
                   final category = data['category'] ?? 'Другое';
 
-                  bool matchesSearch = _searchQuery.isEmpty || title.contains(_searchQuery) || content.contains(_searchQuery) || tags.contains(_searchQuery);
                   bool matchesCategory = _selectedCategory == 'Все' || category == _selectedCategory;
+                  if (!matchesCategory) return false;
 
-                  return matchesSearch && matchesCategory;
+                  // --- УМНЫЙ МНОГОСЛОВНЫЙ ПОИСК ---
+                  if (_searchQuery.isNotEmpty) {
+                    final searchWords = _searchQuery.split(RegExp(r'\s+')); // Разбиваем запрос на слова по пробелу
+                    final searchableText = '$title $content $tags $category';
+                    
+                    // Статья должна содержать ВСЕ слова из поиска
+                    for (var word in searchWords) {
+                      if (!searchableText.contains(word)) {
+                        return false; 
+                      }
+                    }
+                  }
+
+                  return true;
                 }).toList();
 
                 if (docs.isEmpty) return Center(child: Text('Ничего не найдено', style: TextStyle(color: Colors.grey[500])));
@@ -521,3 +533,4 @@ class _AdminNotesScreenState extends State<AdminNotesScreen> {
     );
   }
 }
+
