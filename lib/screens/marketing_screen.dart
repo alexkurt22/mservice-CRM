@@ -6,7 +6,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
-import 'package:intl/intl.dart';
 
 class MarketingScreen extends StatefulWidget {
   const MarketingScreen({super.key});
@@ -90,7 +89,7 @@ class _MarketingScreenState extends State<MarketingScreen> {
     }
   }
 
-  // --- СОЗДАНИЕ РЕКЛАМНОГО ПОСТА ---
+  // --- СОЗДАНИЕ РЕКЛАМНОГО ПОСТА (ИСПРАВЛЕННЫЙ ИНТЕРФЕЙС) ---
   void _showCreateAdDialog() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleController = TextEditingController();
@@ -102,143 +101,160 @@ class _MarketingScreenState extends State<MarketingScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => StatefulBuilder(
         builder: (context, setModalState) {
           return Padding(
-            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom + 20, left: 16, right: 16, top: 16),
-            child: FractionallySizedBox(
-              heightFactor: 0.9,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Container(margin: const EdgeInsets.symmetric(horizontal: 140), height: 4, decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2))),
-                  const SizedBox(height: 16),
-                  Text('Новая рекламная кампания', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87), textAlign: TextAlign.center),
-                  const SizedBox(height: 16),
+            // Отступ снизу для клавиатуры
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom, 
+              left: 16, right: 16, top: 16
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min, // Позволяем колонке сжиматься/растягиваться
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(margin: const EdgeInsets.symmetric(horizontal: 140), height: 4, decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2))),
+                const SizedBox(height: 16),
+                Text('Новая рекламная кампания', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87), textAlign: TextAlign.center),
+                const SizedBox(height: 16),
 
-                  TextField(
-                    controller: titleController,
-                    style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold),
-                    decoration: InputDecoration(labelText: 'Внутреннее название (для себя)', labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]), border: const OutlineInputBorder()),
-                  ),
-                  const SizedBox(height: 12),
-
-                  GestureDetector(
-                    onTap: () async {
-                      final picker = ImagePicker();
-                      final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 60, maxWidth: 1000);
-                      if (pickedFile != null) {
-                        final bytes = await pickedFile.readAsBytes();
-                        setModalState(() => currentImageBase64 = base64Encode(bytes));
-                      }
-                    },
-                    child: Container(
-                      height: 150,
-                      decoration: BoxDecoration(
-                        color: isDark ? Colors.grey[800] : Colors.grey[200],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
-                        image: currentImageBase64 != null ? DecorationImage(image: MemoryImage(base64Decode(currentImageBase64!)), fit: BoxFit.cover) : null,
-                      ),
-                      child: currentImageBase64 == null 
-                          ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_photo_alternate, size: 40, color: Colors.blueGrey[400]), const SizedBox(height: 8), Text('Прикрепить фото для рекламы', style: TextStyle(color: Colors.blueGrey[400]))])
-                          : const Align(alignment: Alignment.topRight, child: Padding(padding: EdgeInsets.all(8.0), child: CircleAvatar(backgroundColor: Colors.black54, child: Icon(Icons.edit, color: Colors.white, size: 20)))),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  Expanded(
-                    child: TextField(
-                      controller: contentController,
-                      maxLines: null,
-                      expands: true,
-                      style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-                      decoration: InputDecoration(
-                        labelText: 'Рекламный текст (Пост)', 
-                        alignLabelWithHint: true,
-                        labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]), 
-                        border: const OutlineInputBorder(),
-                        suffixIcon: Column(
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          children: [
-                            isGeneratingAI 
-                              ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.deepPurpleAccent)))
-                              : IconButton(
-                                  icon: const Icon(Icons.auto_awesome, color: Colors.deepPurpleAccent),
-                                  tooltip: 'Сгенерировать текст (ИИ)',
-                                  onPressed: () async {
-                                    if (titleController.text.isEmpty) {
-                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Сначала напишите суть рекламы в Заголовок!')));
-                                      return;
-                                    }
-                                    setModalState(() => isGeneratingAI = true);
-                                    try {
-                                      const apiKey = String.fromEnvironment('GEMINI_API_KEY', defaultValue: '');
-                                      final model = GenerativeModel(model: 'gemini-flash-latest', apiKey: apiKey);
-                                      final prompt = 'Напиши продающий рекламный пост для компьютерного сервиса на тему: "${titleController.text}". Добавь призыв к действию, эмодзи и популярные хештеги. Текст должен быть готов для публикации в Instagram и на досках объявлений.';
-                                      final response = await model.generateContent([Content.text(prompt)]);
-                                      if (response.text != null) {
-                                        setModalState(() => contentController.text = response.text!.replaceAll(RegExp(r'\*+'), '')); 
-                                      }
-                                    } catch (e) {
-                                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка ИИ: $e')));
-                                    } finally {
-                                      setModalState(() => isGeneratingAI = false);
-                                    }
-                                  },
-                                ),
-                          ],
+                // Скроллируемая область формы (теперь не схлопнется при клавиатуре)
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TextField(
+                          controller: titleController,
+                          style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold),
+                          decoration: InputDecoration(labelText: 'Внутреннее название (для себя)', labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]), border: const OutlineInputBorder()),
                         ),
+                        const SizedBox(height: 12),
+
+                        GestureDetector(
+                          onTap: () async {
+                            final picker = ImagePicker();
+                            final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 60, maxWidth: 1000);
+                            if (pickedFile != null) {
+                              final bytes = await pickedFile.readAsBytes();
+                              setModalState(() => currentImageBase64 = base64Encode(bytes));
+                            }
+                          },
+                          child: Container(
+                            height: 150,
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.grey[800] : Colors.grey[200],
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: isDark ? Colors.grey[700]! : Colors.grey[300]!),
+                              image: currentImageBase64 != null ? DecorationImage(image: MemoryImage(base64Decode(currentImageBase64!)), fit: BoxFit.cover) : null,
+                            ),
+                            child: currentImageBase64 == null 
+                                ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_photo_alternate, size: 40, color: Colors.blueGrey[400]), const SizedBox(height: 8), Text('Прикрепить фото для рекламы', style: TextStyle(color: Colors.blueGrey[400]))])
+                                : const Align(alignment: Alignment.topRight, child: Padding(padding: EdgeInsets.all(8.0), child: CircleAvatar(backgroundColor: Colors.black54, child: Icon(Icons.edit, color: Colors.white, size: 20)))),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        TextField(
+                          controller: contentController,
+                          minLines: 6, // Минимальная высота поля - 6 строк (никогда не схлопнется)
+                          maxLines: 20, // Максимальная - 20, дальше появится внутренний скролл
+                          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                          decoration: InputDecoration(
+                            labelText: 'Рекламный текст (Пост)', 
+                            alignLabelWithHint: true,
+                            labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]), 
+                            border: const OutlineInputBorder(),
+                            suffixIcon: Column(
+                              mainAxisAlignment: MainAxisAlignment.start,
+                              children: [
+                                isGeneratingAI 
+                                  ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.deepPurpleAccent)))
+                                  : IconButton(
+                                      icon: const Icon(Icons.auto_awesome, color: Colors.deepPurpleAccent),
+                                      tooltip: 'Сгенерировать текст (ИИ)',
+                                      onPressed: () async {
+                                        if (titleController.text.isEmpty) {
+                                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Сначала напишите суть рекламы в Заголовок!')));
+                                          return;
+                                        }
+                                        setModalState(() => isGeneratingAI = true);
+                                        try {
+                                          const apiKey = String.fromEnvironment('GEMINI_API_KEY', defaultValue: '');
+                                          final model = GenerativeModel(model: 'gemini-flash-latest', apiKey: apiKey);
+                                          final prompt = 'Напиши продающий рекламный пост для компьютерного сервиса на тему: "${titleController.text}". Добавь призыв к действию, эмодзи и популярные хештеги. Текст должен быть готов для публикации в Instagram и на досках объявлений.';
+                                          final response = await model.generateContent([Content.text(prompt)]);
+                                          if (response.text != null) {
+                                            setModalState(() => contentController.text = response.text!.replaceAll(RegExp(r'\*+'), '')); 
+                                          }
+                                        } catch (e) {
+                                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка ИИ: $e')));
+                                        } finally {
+                                          setModalState(() => isGeneratingAI = false);
+                                        }
+                                      },
+                                    ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                    ),
+                  ),
+                ),
+                
+                // КНОПКА СОХРАНИТЬ (Теперь под защитой SafeArea от системных кнопок)
+                SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        backgroundColor: Colors.blue[700],
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: Colors.blue[700],
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    onPressed: isSaving ? null : () async {
-                      if (titleController.text.trim().isEmpty || contentController.text.trim().isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Заполните заголовок и текст')));
-                        return;
-                      }
-
-                      setModalState(() => isSaving = true);
-                      try {
-                        // Подготавливаем чекбокс-карту из глобальных площадок
-                        Map<String, bool> platformsStatus = {};
-                        for (var p in _globalPlatforms) {
-                          platformsStatus[p] = false; // По умолчанию нигде не опубликовано
+                      onPressed: isSaving ? null : () async {
+                        if (titleController.text.trim().isEmpty || contentController.text.trim().isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Заполните заголовок и текст')));
+                          return;
                         }
 
-                        await FirebaseFirestore.instance.collection('marketing_campaigns').add({
-                          'title': titleController.text.trim(),
-                          'content': contentController.text.trim(),
-                          'image_base64': currentImageBase64,
-                          'platforms_status': platformsStatus,
-                          'created_at': FieldValue.serverTimestamp(),
-                        });
+                        setModalState(() => isSaving = true);
+                        try {
+                          Map<String, bool> platformsStatus = {};
+                          for (var p in _globalPlatforms) {
+                            platformsStatus[p] = false; 
+                          }
 
-                        if (context.mounted) {
-                          Navigator.pop(ctx);
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Рекламная кампания создана!'), backgroundColor: Colors.green));
+                          await FirebaseFirestore.instance.collection('marketing_campaigns').add({
+                            'title': titleController.text.trim(),
+                            'content': contentController.text.trim(),
+                            'image_base64': currentImageBase64,
+                            'platforms_status': platformsStatus,
+                            'created_at': FieldValue.serverTimestamp(),
+                          });
+
+                          if (context.mounted) {
+                            Navigator.pop(ctx);
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Рекламная кампания создана!'), backgroundColor: Colors.green));
+                          }
+                        } catch (e) {
+                          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red));
+                        } finally {
+                          setModalState(() => isSaving = false);
                         }
-                      } catch (e) {
-                        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red));
-                      } finally {
-                        setModalState(() => isSaving = false);
-                      }
-                    },
-                    child: isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white)) : const Text('СОХРАНИТЬ КАМПАНИЮ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      },
+                      child: isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white)) : const Text('СОХРАНИТЬ КАМПАНИЮ', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           );
         }
@@ -317,7 +333,7 @@ class _MarketingScreenState extends State<MarketingScreen> {
                             child: ElevatedButton.icon(
                               style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[700], foregroundColor: Colors.white),
                               onPressed: () {
-                                // Нативный Share (Спросит куда отправить: Instagram, Telegram и тд)
+                                // Нативный Share
                                 Share.share(content);
                               },
                               icon: const Icon(Icons.share), label: const Text('ПОДЕЛИТЬСЯ')
@@ -358,6 +374,7 @@ class _MarketingScreenState extends State<MarketingScreen> {
                           ),
                         );
                       }),
+                      const SizedBox(height: 40), // Отступ в самом низу
                     ],
                   ),
                 ),
