@@ -17,7 +17,8 @@ import 'bulk_push_screen.dart';
 import 'admin_notes_screen.dart';
 import 'content_manager_screen.dart';
 import 'store_management_screen.dart';
-import 'cash_register_screen.dart'; // <--- ИМПОРТ НОВОГО ЭКРАНА КАССЫ
+import 'cash_register_screen.dart'; 
+import 'marketing_screen.dart'; // <--- ИМПОРТ ЭКРАНА РЕКЛАМЫ
 import 'login_screen.dart'; 
 
 class DashboardScreen extends StatefulWidget {
@@ -167,7 +168,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   if (_hasPermission('view_finance'))
                     ListTile(leading: Icon(Icons.bar_chart, color: isDark ? Colors.white70 : Colors.blueGrey[700]), title: Text('Статистика', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const StatisticsScreen())); }),
 
-                  // --- КНОПКА КАССЫ (ДОСТУПНА ВСЕМ) ---
                   ListTile(
                     leading: const Icon(Icons.account_balance_wallet, color: Colors.green), 
                     title: Text('Касса и Долги', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), 
@@ -180,7 +180,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   if (_hasPermission('send_push'))
                     ListTile(leading: Icon(Icons.send_to_mobile, color: isDark ? Colors.white70 : Colors.blueGrey[700]), title: Text('Создать рассылку', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const BulkPushScreen())); }),
                   
-                  ListTile(leading: Icon(Icons.edit_note, color: isDark ? Colors.white70 : Colors.blueGrey[700]), title: Text('Заметки', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminNotesScreen())); }),
+                  // --- НОВАЯ КНОПКА: РЕКЛАМНЫЕ КАМПАНИИ ---
+                  ListTile(
+                    leading: const Icon(Icons.campaign, color: Colors.blueAccent), 
+                    title: Text('Рекламные кампании', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), 
+                    onTap: () { 
+                      Navigator.pop(context); 
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const MarketingScreen())); 
+                    }
+                  ),
+
+                  ListTile(leading: Icon(Icons.menu_book, color: isDark ? Colors.white70 : Colors.blueGrey[700]), title: Text('База знаний', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminNotesScreen())); }),
                   
                   if (_hasPermission('manage_settings')) ...[
                     ListTile(leading: Icon(Icons.storefront, color: isDark ? Colors.green[300] : Colors.green[700]), title: Text('Магазин и Склад', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const StoreManagementScreen())); }),
@@ -350,3 +360,4 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
+
