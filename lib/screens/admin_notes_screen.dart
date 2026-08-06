@@ -31,7 +31,7 @@ class _AdminNotesScreenState extends State<AdminNotesScreen> {
     super.dispose();
   }
 
-  // --- ПРОСМОТР СТАТЬИ (РЕЖИМ ЧТЕНИЯ) ---
+  // --- ПРОСМОТР СТАТЕЙ (РЕЖИМ ЧТЕНИЯ) ---
   void _showNoteViewer(String docId, Map<String, dynamic> data) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final title = data['title'] ?? 'Без заголовка';
