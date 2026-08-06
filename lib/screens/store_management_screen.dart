@@ -18,16 +18,19 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
-  void _showAddProductDialog() {
+  // УНИВЕРСАЛЬНАЯ ФУНКЦИЯ: ДОБАВЛЕНИЕ ИЛИ РЕДАКТИРОВАНИЕ
+  void _showProductDialog({DocumentSnapshot? existingDoc}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    final nameController = TextEditingController();
-    final priceController = TextEditingController();
-    final stockController = TextEditingController(text: '1');
-    final barcodeController = TextEditingController();
-    final descController = TextEditingController();
+    // Подставляем данные, если это редактирование
+    final nameController = TextEditingController(text: existingDoc?['name'] ?? '');
+    final priceController = TextEditingController(text: existingDoc?['price']?.toString() ?? '');
+    final stockController = TextEditingController(text: existingDoc?['stock']?.toString() ?? '1');
+    final barcodeController = TextEditingController(text: existingDoc?['barcode'] ?? '');
+    final descController = TextEditingController(text: existingDoc?['description'] ?? '');
     
-    String condition = 'Новый'; 
+    String condition = existingDoc?['condition'] ?? 'Новый'; 
+    String? currentImageBase64 = existingDoc?['image_base64'];
     Uint8List? selectedImageBytes;
     bool isSaving = false;
     bool isGeneratingAI = false;
@@ -38,7 +41,10 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
         final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70, maxWidth: 800);
         if (pickedFile != null) {
           final bytes = await pickedFile.readAsBytes();
-          setModalState(() => selectedImageBytes = bytes);
+          setModalState(() {
+            selectedImageBytes = bytes;
+            currentImageBase64 = null; // Сбрасываем старую картинку
+          });
         }
       } catch (e) {
         debugPrint('Ошибка выбора фото: $e');
@@ -75,6 +81,8 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
         List<Content> content = [];
         if (selectedImageBytes != null) {
            content.add(Content.multi([TextPart(prompt), DataPart('image/jpeg', selectedImageBytes!)]));
+        } else if (currentImageBase64 != null && currentImageBase64!.isNotEmpty) {
+           content.add(Content.multi([TextPart(prompt), DataPart('image/jpeg', base64Decode(currentImageBase64!))]));
         } else {
            content.add(Content.text(prompt));
         }
@@ -130,7 +138,7 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                   children: [
                     Container(margin: const EdgeInsets.symmetric(horizontal: 140), height: 4, decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2))),
                     const SizedBox(height: 16),
-                    Text('Добавление товара', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87), textAlign: TextAlign.center),
+                    Text(existingDoc == null ? 'Добавление товара' : 'Редактирование товара', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87), textAlign: TextAlign.center),
                     const SizedBox(height: 16),
 
                     GestureDetector(
@@ -144,9 +152,13 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                             color: isDark ? Colors.grey[800] : Colors.grey[200],
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(color: isDark ? Colors.grey[700]! : Colors.grey[300]!, width: 2),
-                            image: selectedImageBytes != null ? DecorationImage(image: MemoryImage(selectedImageBytes!), fit: BoxFit.cover) : null,
+                            image: selectedImageBytes != null 
+                                ? DecorationImage(image: MemoryImage(selectedImageBytes!), fit: BoxFit.cover) 
+                                : (currentImageBase64 != null && currentImageBase64!.isNotEmpty)
+                                    ? DecorationImage(image: MemoryImage(base64Decode(currentImageBase64!)), fit: BoxFit.cover)
+                                    : null,
                           ),
-                          child: selectedImageBytes == null 
+                          child: (selectedImageBytes == null && (currentImageBase64 == null || currentImageBase64!.isEmpty))
                               ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_a_photo, size: 32, color: Colors.blueGrey[400]), const SizedBox(height: 4), Text('Фото', style: TextStyle(color: Colors.blueGrey[400], fontSize: 12, fontWeight: FontWeight.bold))])
                               : null,
                         ),
@@ -264,26 +276,34 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
 
                         setModalState(() => isSaving = true);
                         try {
-                          String? imageBase64;
+                          String? finalImageBase64 = currentImageBase64;
                           if (selectedImageBytes != null) {
-                            imageBase64 = base64Encode(selectedImageBytes!);
+                            finalImageBase64 = base64Encode(selectedImageBytes!);
                           }
 
-                          await FirebaseFirestore.instance.collection('products').add({
+                          Map<String, dynamic> data = {
                             'name': name,
                             'price': price,
                             'stock': stock,
                             'condition': condition,
                             'barcode': barcodeController.text.trim(),
                             'description': descController.text.trim(),
-                            'image_base64': imageBase64,
-                            'created_at': FieldValue.serverTimestamp(),
+                            'image_base64': finalImageBase64,
                             'is_active': stock > 0, 
-                          });
+                          };
+
+                          if (existingDoc == null) {
+                            // СОЗДАНИЕ НОВОГО ТОВАРА
+                            data['created_at'] = FieldValue.serverTimestamp();
+                            await FirebaseFirestore.instance.collection('products').add(data);
+                          } else {
+                            // ОБНОВЛЕНИЕ СУЩЕСТВУЮЩЕГО
+                            await FirebaseFirestore.instance.collection('products').doc(existingDoc.id).update(data);
+                          }
 
                           if (context.mounted) {
                             Navigator.pop(ctx);
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Товар добавлен в магазин!'), backgroundColor: Colors.green));
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(existingDoc == null ? 'Товар добавлен!' : 'Товар обновлен!'), backgroundColor: Colors.green));
                           }
                         } catch (e) {
                           if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red));
@@ -293,7 +313,7 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                       },
                       child: isSaving 
                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Text('ОПУБЛИКОВАТЬ В МАГАЗИН', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                          : Text(existingDoc == null ? 'ОПУБЛИКОВАТЬ В МАГАЗИН' : 'СОХРАНИТЬ ИЗМЕНЕНИЯ', style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2)),
                     ),
                     const SizedBox(height: 16),
                   ],
@@ -310,6 +330,23 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
     FirebaseFirestore.instance.collection('products').doc(docId).delete();
   }
 
+  // --- НОВОЕ: СКАНЕР ШТРИХКОДА ДЛЯ ПОИСКА ---
+  Future<void> _scanBarcodeForSearch() async {
+    try {
+      var result = await BarcodeScanner.scan();
+      if (result.type == ResultType.Barcode && result.rawContent.isNotEmpty) {
+        setState(() {
+          _searchController.text = result.rawContent;
+          _searchQuery = result.rawContent.toLowerCase();
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка сканирования: $e'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -322,7 +359,7 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
         title: const Text('Склад и Витрина', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddProductDialog,
+        onPressed: () => _showProductDialog(), // Откроется как добавление (без existingDoc)
         backgroundColor: Colors.blueGrey[800],
         icon: const Icon(Icons.add_shopping_cart, color: Colors.white),
         label: const Text('Добавить товар', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -335,11 +372,16 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
             child: TextField(
               controller: _searchController,
               style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-              onChanged: (val) => setState(() => _searchQuery = val.trim()),
+              onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
               decoration: InputDecoration(
                 hintText: 'Поиск по названию или штрихкоду...',
                 hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey),
                 prefixIcon: Icon(Icons.search, color: isDark ? Colors.white54 : Colors.grey),
+                // ИКОНКА СКАНЕРА В СТРОКЕ ПОИСКА
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.qr_code_scanner, color: Colors.blueAccent),
+                  onPressed: _scanBarcodeForSearch,
+                ),
                 filled: true,
                 fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
                 contentPadding: const EdgeInsets.symmetric(vertical: 0),
@@ -368,13 +410,13 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
 
                 var docs = snapshot.data!.docs;
 
+                // ЛОГИКА ФИЛЬТРАЦИИ ПОИСКА
                 if (_searchQuery.isNotEmpty) {
-                  final q = _searchQuery.toLowerCase();
                   docs = docs.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
                     final name = (data['name'] ?? '').toString().toLowerCase();
                     final barcode = (data['barcode'] ?? '').toString().toLowerCase();
-                    return name.contains(q) || barcode.contains(q);
+                    return name.contains(_searchQuery) || barcode.contains(_searchQuery);
                   }).toList();
                 }
 
@@ -427,6 +469,15 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                                       Expanded(
                                         child: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: isDark ? Colors.white : Colors.black87)),
                                       ),
+                                      // КНОПКА РЕДАКТИРОВАНИЯ
+                                      IconButton(
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                        icon: Icon(Icons.edit, color: isDark ? Colors.blue[300] : Colors.blue[600], size: 20),
+                                        onPressed: () => _showProductDialog(existingDoc: doc),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      // КНОПКА УДАЛЕНИЯ
                                       IconButton(
                                         padding: EdgeInsets.zero,
                                         constraints: const BoxConstraints(),
