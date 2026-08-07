@@ -5,27 +5,54 @@ on:
 
 jobs:
   build:
-    runs-on: windows-2019 # <--- ВОТ ГЛАВНЫЙ СЕКРЕТ
+    runs-on: windows-latest # Возвращаем самый быстрый сервер!
 
     steps:
-      - name: Скачиваем код
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Устанавливаем Flutter
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
 
-      - name: Включаем поддержку Windows
+      - name: Enable Windows Desktop
         run: |
           flutter config --enable-windows-desktop
           flutter create . --platforms windows
           flutter pub get
 
-      - name: Компилируем Windows-приложение (.exe)
-        run: flutter build windows --release
+      - name: Inject Secret Keys (Push Notifications)
+        env:
+          FIREBASE_SECRET: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          mkdir -p assets
+          echo "$FIREBASE_SECRET" | base64 -d > assets/firebase_credentials.json
+        shell: bash
 
-      - name: Сохраняем готовую программу в архив
+      - name: Fix Firebase CMake Error
+        run: |
+          cat << 'EOF' > fix_cmake.dart
+          import 'dart:io';
+          void main() {
+            var f = File('windows/CMakeLists.txt');
+            if (f.existsSync()) {
+              var text = f.readAsStringSync();
+              // Лечим ошибку совместимости CMake 3.30+ и Firebase
+              text = text.replaceFirst('project(', 'set(CMAKE_POLICY_VERSION_MINIMUM "3.5")\nproject(');
+              f.writeAsStringSync(text);
+            }
+          }
+          EOF
+          dart fix_cmake.dart
+        shell: bash
+
+      - name: Build Windows App
+        env:
+          GEMINI_SECRET: ${{ secrets.GEMINI_API_KEY }}
+        run: flutter build windows --release --dart-define=GEMINI_API_KEY=$GEMINI_SECRET
+
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: admin-windows-app
