@@ -1,0 +1,34 @@
+name: Deploy Web App to GitHub Pages
+
+on:
+  workflow_dispatch: # Кнопка для ручного запуска
+
+# Даем скрипту права на загрузку файлов на бесплатный хостинг
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest # Используем быстрый Linux сервер
+
+    steps:
+      - name: Скачиваем код
+        uses: actions/checkout@v4
+
+      - name: Устанавливаем Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Собираем Web-версию
+        run: |
+          flutter config --enable-web
+          flutter pub get
+          flutter build web --release --base-href /mservice-CRM/
+
+      - name: Загружаем на бесплатный хостинг GitHub
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build/web
+
