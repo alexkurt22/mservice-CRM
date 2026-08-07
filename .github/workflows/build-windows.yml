@@ -1,0 +1,33 @@
+name: Build Windows App
+
+on:
+  workflow_dispatch: # Кнопка для ручного запуска
+
+jobs:
+  build:
+    runs-on: windows-latest # Запускаем на сервере с Windows
+
+    steps:
+      - name: Скачиваем код
+        uses: actions/checkout@v3
+
+      - name: Устанавливаем Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Включаем поддержку Windows
+        run: |
+          flutter config --enable-windows-desktop
+          flutter create . --platforms windows
+          flutter pub get
+
+      - name: Компилируем Windows-приложение (.exe)
+        run: flutter build windows --release
+
+      - name: Сохраняем готовую программу в архив
+        uses: actions/upload-artifact@v3
+        with:
+          name: admin-windows-app
+          path: build/windows/x64/runner/Release/
+
