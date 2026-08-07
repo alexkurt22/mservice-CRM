@@ -5,11 +5,13 @@ import 'package:flutter/foundation.dart'
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
-      return web; // Теперь Web работает!
+      return web;
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
         return android;
+      case TargetPlatform.windows:
+        return web; // <--- ВОТ ОНО! Теперь Windows запустится, используя Web-ключи
       case TargetPlatform.iOS:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for ios - '
@@ -18,11 +20,6 @@ class DefaultFirebaseOptions {
       case TargetPlatform.macOS:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for macos - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
-      case TargetPlatform.windows:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for windows - '
           'you can reconfigure this by running the FlutterFire CLI again.',
         );
       case TargetPlatform.linux:
@@ -37,7 +34,7 @@ class DefaultFirebaseOptions {
     }
   }
 
-  // --- НАСТРОЙКИ ДЛЯ WEB ---
+  // --- НАСТРОЙКИ ДЛЯ WEB И WINDOWS ---
   static const FirebaseOptions web = FirebaseOptions(
     apiKey: 'AIzaSyDuPX1R3pYAICqTEnAnR8nU1qy3cnA0rAQ',
     appId: '1:1058899397110:web:fca47fe627b1aa6abf5fd7',
