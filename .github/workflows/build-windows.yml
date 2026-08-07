@@ -11,29 +11,44 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Java
-        uses: actions/setup-java@v3
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          
-      - name: Generate system files
-        run: flutter create --platforms=windows .
-        
-      - name: Install dependencies
-        run: flutter pub get
 
-      - name: Inject Secret Keys and Permanent Keystore
+      - name: Enable Windows Desktop
+        run: |
+          flutter config --enable-windows-desktop
+          flutter create . --platforms windows
+          flutter pub get
+
+      - name: Inject Secret Keys (Push Notifications)
         env:
           FIREBASE_SECRET: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
           mkdir -p assets
           echo "$FIREBASE_SECRET" | base64 -d > assets/firebase_credentials.json
+        shell: bash
+
+      - name: Fix CMake and Visual Studio strict errors
+        run: |
+          cat << 'EOF' > fix_cmake.dart
+          import 'dart:io';
+          void main() {
+            var f = File('windows/CMakeLists.txt');
+            if (f.existsSync()) {
+              var text = f.readAsStringSync();
+              // Убиваем ошибку CMake от Firebase и ошибку Coroutine от Visual Studio
+              text = text.replaceFirst(
+                'project(', 
+                'set(CMAKE_POLICY_VERSION_MINIMUM "3.5")\nadd_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)\nproject('
+              );
+              f.writeAsStringSync(text);
+            }
+          }
+          EOF
+          dart fix_cmake.dart
+        shell: bash
 
       - name: Build Windows App
         env:
