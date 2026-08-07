@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest # Возвращаем самый быстрый сервер!
+    runs-on: windows-latest
 
     steps:
       - name: Checkout code
@@ -30,7 +30,7 @@ jobs:
           echo "$FIREBASE_SECRET" | base64 -d > assets/firebase_credentials.json
         shell: bash
 
-      - name: Fix Firebase CMake Error
+      - name: Fix CMake and Visual Studio strict errors
         run: |
           cat << 'EOF' > fix_cmake.dart
           import 'dart:io';
@@ -38,8 +38,11 @@ jobs:
             var f = File('windows/CMakeLists.txt');
             if (f.existsSync()) {
               var text = f.readAsStringSync();
-              // Лечим ошибку совместимости CMake 3.30+ и Firebase
-              text = text.replaceFirst('project(', 'set(CMAKE_POLICY_VERSION_MINIMUM "3.5")\nproject(');
+              // Убиваем ошибку CMake от Firebase и ошибку Coroutine от Visual Studio
+              text = text.replaceFirst(
+                'project(', 
+                'set(CMAKE_POLICY_VERSION_MINIMUM "3.5")\nadd_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)\nproject('
+              );
               f.writeAsStringSync(text);
             }
           }
