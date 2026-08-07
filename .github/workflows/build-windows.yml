@@ -1,11 +1,11 @@
 name: Build Windows App
 
 on:
-  workflow_dispatch: # Кнопка для ручного запуска
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2019 # <--- ВОТ ГЛАВНЫЙ СЕКРЕТ
 
     steps:
       - name: Скачиваем код
@@ -15,11 +15,6 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-
-      - name: Понижаем CMake для совместимости с Firebase
-        uses: jwlawson/actions-setup-cmake@v2
-        with:
-          cmake-version: '3.29.3'
 
       - name: Включаем поддержку Windows
         run: |
