@@ -11,21 +11,18 @@ class DefaultFirebaseOptions {
       case TargetPlatform.android:
         return android;
       case TargetPlatform.windows:
-        return web; // <--- ВОТ ОНО! Теперь Windows запустится, используя Web-ключи
+        return web; // <--- Принудительно используем Web-конфиг для Windows, чтобы приложение не падало!
       case TargetPlatform.iOS:
         throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for ios - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
+          'DefaultFirebaseOptions have not been configured for ios.',
         );
       case TargetPlatform.macOS:
         throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for macos - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
+          'DefaultFirebaseOptions have not been configured for macos.',
         );
       case TargetPlatform.linux:
         throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for linux - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
+          'DefaultFirebaseOptions have not been configured for linux.',
         );
       default:
         throw UnsupportedError(
@@ -34,7 +31,6 @@ class DefaultFirebaseOptions {
     }
   }
 
-  // --- НАСТРОЙКИ ДЛЯ WEB И WINDOWS ---
   static const FirebaseOptions web = FirebaseOptions(
     apiKey: 'AIzaSyDuPX1R3pYAICqTEnAnR8nU1qy3cnA0rAQ',
     appId: '1:1058899397110:web:fca47fe627b1aa6abf5fd7',
@@ -44,7 +40,6 @@ class DefaultFirebaseOptions {
     storageBucket: 'mserviceapp-79557.firebasestorage.app',
   );
 
-  // --- НАСТРОЙКИ ДЛЯ ANDROID ---
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyDuPX1R3pYAICqTEnAnR8nU1qy3cnA0rAQ',
     appId: '1:1058899397110:android:335c9832bfcfba75bf5fd7',
