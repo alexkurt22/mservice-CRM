@@ -5,11 +5,11 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest # Запускаем на сервере с Windows
+    runs-on: windows-latest
 
     steps:
       - name: Скачиваем код
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Устанавливаем Flutter
         uses: subosito/flutter-action@v2
@@ -26,8 +26,7 @@ jobs:
         run: flutter build windows --release
 
       - name: Сохраняем готовую программу в архив
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: admin-windows-app
           path: build/windows/x64/runner/Release/
-
