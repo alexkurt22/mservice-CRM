@@ -1,4 +1,4 @@
-import 'dart:io' show Platform;
+import 'dart:io' show Platform, File;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -10,36 +10,57 @@ import 'firebase_options.dart';
 import 'screens/dashboard_screen.dart'; 
 import 'screens/login_screen.dart'; 
 import 'screens/settings_screen.dart'; 
-
 import 'screens/orders_screen.dart';
 import 'screens/chat_lists_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  // ЛОВУШКА ДЛЯ ОШИБОК
+  try {
+    WidgetsFlutterBinding.ensureInitialized();
+    
+    // Пытаемся запустить Firebase
+    await Firebase.initializeApp(
+      options: (kIsWeb || Platform.isWindows) 
+          ? DefaultFirebaseOptions.web 
+          : DefaultFirebaseOptions.currentPlatform,
+    );
 
-  final prefs = await SharedPreferences.getInstance();
-  final savedPhone = prefs.getString('employee_phone');
-  final bool isDarkSaved = prefs.getBool('is_dark_mode') ?? false;
+    final prefs = await SharedPreferences.getInstance();
+    final savedPhone = prefs.getString('employee_phone');
+    final bool isDarkSaved = prefs.getBool('is_dark_mode') ?? false;
 
-  Widget startScreen = const LoginScreen();
+    Widget startScreen = const LoginScreen();
 
-  if (savedPhone != null && savedPhone.isNotEmpty) {
-    try {
+    if (savedPhone != null && savedPhone.isNotEmpty) {
       final doc = await FirebaseFirestore.instance.collection('employees').doc(savedPhone).get();
       if (doc.exists && doc.data()?['is_approved'] == true) {
         startScreen = const DashboardScreen();
       }
-    } catch (e) {
-      debugPrint('Ошибка при проверке сотрудника: $e');
     }
-  }
 
-  runApp(MyApp(startScreen: startScreen, initialDarkMode: isDarkSaved));
+    runApp(MyApp(startScreen: startScreen, initialDarkMode: isDarkSaved));
+
+  } catch (e, stackTrace) {
+    // ЕСЛИ ПРОИЗОШЕЛ КРАШ - ЗАПИСЫВАЕМ В ФАЙЛ И ВЫВОДИМ НА ЭКРАН
+    if (!kIsWeb && Platform.isWindows) {
+      File('crash_log.txt').writeAsStringSync('CRASH: $e\n\n$stackTrace');
+    }
+    
+    runApp(MaterialApp(
+      home: Scaffold(
+        backgroundColor: Colors.red[900],
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Text(
+            'КРИТИЧЕСКАЯ ОШИБКА ЗАПУСКА:\n\n$e\n\n$stackTrace',
+            style: const TextStyle(color: Colors.white, fontSize: 16),
+          ),
+        ),
+      ),
+    ));
+  }
 }
 
 class MyApp extends StatefulWidget {
@@ -63,22 +84,22 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _setupPushRouting() async {
-    // 🛑 СПАСЕНИЕ ОТ ПАДЕНИЯ: Если мы на Windows, пропускаем прослушивание Push-уведомлений!
-    if (!kIsWeb && Platform.isWindows) {
-      return; 
-    }
+    // На Windows отключаем слушатель Push-уведомлений, чтобы не крашилось
+    if (!kIsWeb && Platform.isWindows) return;
 
-    RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
-    if (initialMessage != null) {
-      _handlePushMessage(initialMessage);
+    try {
+      RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+      if (initialMessage != null) {
+        _handlePushMessage(initialMessage);
+      }
+      FirebaseMessaging.onMessageOpenedApp.listen(_handlePushMessage);
+    } catch (e) {
+      debugPrint('Ошибка Push: $e');
     }
-
-    FirebaseMessaging.onMessageOpenedApp.listen(_handlePushMessage);
   }
 
   void _handlePushMessage(RemoteMessage message) {
     final type = message.data['type'];
-    
     if (type == 'chat') {
       navigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => const TeamChatsListScreen()));
     } else if (type == 'negotiation') {
@@ -88,34 +109,14 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
-  Future<void> _toggleTheme(bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('is_dark_mode', value);
-    setState(() {
-      _isDarkMode = value;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false, 
       title: 'M-Service CRM',
-      theme: ThemeData(
-        brightness: Brightness.light,
-        primarySwatch: Colors.blueGrey,
-        scaffoldBackgroundColor: Colors.grey[50],
-        cardColor: Colors.white,
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        brightness: Brightness.dark,
-        primarySwatch: Colors.blueGrey,
-        scaffoldBackgroundColor: Colors.grey[950],
-        cardColor: Colors.grey[900],
-        useMaterial3: true,
-      ),
+      theme: ThemeData(brightness: Brightness.light, useMaterial3: true),
+      darkTheme: ThemeData(brightness: Brightness.dark, useMaterial3: true),
       themeMode: _isDarkMode ? ThemeMode.dark : ThemeMode.light,
       home: widget.startScreen,
     );
