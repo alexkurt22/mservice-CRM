@@ -20,7 +20,7 @@ class _AdminNotesScreenState extends State<AdminNotesScreen> {
   String _selectedCategory = 'Все';
 
   final List<String> _categories = [
-    'Все', 'Принтеры', 'Ноутбуки', 'Смартфоны', 'ПК и Железо', 'Программное обеспечение', 'Сети', 'Другое'
+    'Все', 'Принтеры', 'Ноутбуки', 'ПК и Железо', 'Программное обеспечение', 'Сети', 'Другое'
   ];
 
   final ImagePicker _imagePicker = ImagePicker();
