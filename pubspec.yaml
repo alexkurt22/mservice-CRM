@@ -37,7 +37,7 @@ dependencies:
   permission_handler: ^11.3.1   # Нужен для камеры
   
   # --- Audio & Notifications ---
-  flutter_ringtone_player: ^4.0.0+4 # Оставил только для звука пуш-уведомлений
+  # flutter_ringtone_player УДАЛЕН (ВЫЗЫВАЛ ЭХО В УВЕДОМЛЕНИЯХ)
   
   # --- AI Services ---
   google_generative_ai: ^0.4.3
