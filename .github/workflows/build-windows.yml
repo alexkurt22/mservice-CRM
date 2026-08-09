@@ -35,7 +35,7 @@ jobs:
           FIREBASE_SECRET: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
           mkdir -p assets
-          echo "$FIREBASE_SECRET" | base64 -d > assets/firebase_credentials.json
+          echo -n "$FIREBASE_SECRET" | tr -d '\n\r ' | base64 -d -i > assets/firebase_credentials.json
         shell: bash
 
       - name: Fix CMake and Visual Studio errors
@@ -49,7 +49,7 @@ jobs:
       - name: Build Windows App
         env:
           GEMINI_SECRET: ${{ secrets.GEMINI_API_KEY }}
-        run: flutter build windows --release --dart-define=GEMINI_API_KEY=$GEMINI_SECRET
+        run: flutter build windows --release --dart-define="GEMINI_API_KEY=${GEMINI_SECRET}"
         shell: bash
 
       - name: Upload Artifact
