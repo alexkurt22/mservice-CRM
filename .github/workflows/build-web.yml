@@ -24,7 +24,7 @@ jobs:
           FIREBASE_SECRET: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
           mkdir -p assets
-          echo "$FIREBASE_SECRET" | base64 -d > assets/firebase_credentials.json
+          echo -n "$FIREBASE_SECRET" | tr -d '\n\r ' | base64 -d -i > assets/firebase_credentials.json
 
       - name: Создаем папку Web и собираем сайт
         env:
@@ -33,7 +33,7 @@ jobs:
           flutter config --enable-web
           flutter create . --platforms web
           flutter pub get
-          flutter build web --release --dart-define=GEMINI_API_KEY=$GEMINI_SECRET --base-href /mservice-CRM/
+          flutter build web --release --dart-define="GEMINI_API_KEY=${GEMINI_SECRET}" --base-href /mservice-CRM/
 
       - name: Загружаем на бесплатный хостинг GitHub
         uses: peaceiris/actions-gh-pages@v4
