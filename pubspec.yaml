@@ -38,9 +38,6 @@ dependencies:
   
   # --- Audio & Notifications ---
   # flutter_ringtone_player УДАЛЕН (ВЫЗЫВАЛ ЭХО В УВЕДОМЛЕНИЯХ)
-  
-  # --- AI Services ---
-  google_generative_ai: ^0.4.3
 
 dev_dependencies:
   flutter_test:
