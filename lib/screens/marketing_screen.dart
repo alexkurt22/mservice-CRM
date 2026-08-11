@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:google_generative_ai/google_generative_ai.dart';
 
 class MarketingScreen extends StatefulWidget {
   const MarketingScreen({super.key});
@@ -89,14 +88,13 @@ class _MarketingScreenState extends State<MarketingScreen> {
     }
   }
 
-  // --- СОЗДАНИЕ РЕКЛАМНОГО ПОСТА (ИСПРАВЛЕННЫЙ ИНТЕРФЕЙС) ---
+  // --- СОЗДАНИЕ РЕКЛАМНОГО ПОСТА (ИСПРАВЛЕННЫЙ ИНТЕРФЕЙС БЕЗ ИИ) ---
   void _showCreateAdDialog() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final titleController = TextEditingController();
     final contentController = TextEditingController();
     String? currentImageBase64;
     bool isSaving = false;
-    bool isGeneratingAI = false;
 
     showModalBottomSheet(
       context: context,
@@ -167,37 +165,6 @@ class _MarketingScreenState extends State<MarketingScreen> {
                             alignLabelWithHint: true,
                             labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]), 
                             border: const OutlineInputBorder(),
-                            suffixIcon: Column(
-                              mainAxisAlignment: MainAxisAlignment.start,
-                              children: [
-                                isGeneratingAI 
-                                  ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.deepPurpleAccent)))
-                                  : IconButton(
-                                      icon: const Icon(Icons.auto_awesome, color: Colors.deepPurpleAccent),
-                                      tooltip: 'Сгенерировать текст (ИИ)',
-                                      onPressed: () async {
-                                        if (titleController.text.isEmpty) {
-                                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Сначала напишите суть рекламы в Заголовок!')));
-                                          return;
-                                        }
-                                        setModalState(() => isGeneratingAI = true);
-                                        try {
-                                          const apiKey = String.fromEnvironment('GEMINI_API_KEY', defaultValue: '');
-                                          final model = GenerativeModel(model: 'gemini-flash-latest', apiKey: apiKey);
-                                          final prompt = 'Напиши продающий рекламный пост для компьютерного сервиса на тему: "${titleController.text}". Добавь призыв к действию, эмодзи и популярные хештеги. Текст должен быть готов для публикации в Instagram и на досках объявлений.';
-                                          final response = await model.generateContent([Content.text(prompt)]);
-                                          if (response.text != null) {
-                                            setModalState(() => contentController.text = response.text!.replaceAll(RegExp(r'\*+'), '')); 
-                                          }
-                                        } catch (e) {
-                                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка ИИ: $e')));
-                                        } finally {
-                                          setModalState(() => isGeneratingAI = false);
-                                        }
-                                      },
-                                    ),
-                              ],
-                            ),
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -490,3 +457,4 @@ class _MarketingScreenState extends State<MarketingScreen> {
     );
   }
 }
+
