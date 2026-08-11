@@ -109,9 +109,7 @@ jobs:
           dart setup_signing.dart
 
       - name: Build APK
-        env:
-          GEMINI_SECRET: ${{ secrets.GEMINI_API_KEY }}
-        run: flutter build apk --release --dart-define="GEMINI_API_KEY=${GEMINI_SECRET}" --build-name=1.0.${{ github.run_number }} --build-number=${{ github.run_number }}
+        run: flutter build apk --release --build-name=1.0.${{ github.run_number }} --build-number=${{ github.run_number }}
 
       - name: Rename APK with Date and Time
         run: |
