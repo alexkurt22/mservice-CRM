@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:barcode_scan2/barcode_scan2.dart';
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:permission_handler/permission_handler.dart'; // Добавлен для починки сканера
 
 class StoreManagementScreen extends StatefulWidget {
   const StoreManagementScreen({super.key});
@@ -33,7 +33,6 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
     String? currentImageBase64 = existingDoc?['image_base64'];
     Uint8List? selectedImageBytes;
     bool isSaving = false;
-    bool isGeneratingAI = false;
 
     Future<void> pickImage(StateSetter setModalState) async {
       try {
@@ -51,71 +50,23 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
       }
     }
 
-    Future<void> generateDescriptionWithAI(StateSetter setModalState) async {
-      const apiKey = String.fromEnvironment('GEMINI_API_KEY', defaultValue: '');
-
-      if (apiKey.isEmpty) {
-        showDialog(
-          context: context, 
-          builder: (ctx) => AlertDialog(
-            title: const Text('Ошибка ключа'), 
-            content: const Text('API-ключ Gemini не был передан при сборке (проверьте GitHub Secrets).'),
-            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ОК'))],
-          ),
-        );
-        return;
-      }
-
-      setModalState(() => isGeneratingAI = true);
-
-      try {
-        final model = GenerativeModel(model: 'gemini-flash-latest', apiKey: apiKey);
-        String prompt = 'Напиши красивое, короткое и продающее описание для этого товара. Укажи его преимущества для покупателя. Текст на русском языке, без воды, буквально 3-4 предложения для интернет-магазина.';
-        
-        if (nameController.text.trim().isNotEmpty) {
-          prompt += ' Товар называется: "${nameController.text.trim()}".';
-        } else {
-          prompt += ' Также определи, что это за товар, и напиши его название в начале.';
-        }
-
-        List<Content> content = [];
-        if (selectedImageBytes != null) {
-           content.add(Content.multi([TextPart(prompt), DataPart('image/jpeg', selectedImageBytes!)]));
-        } else if (currentImageBase64 != null && currentImageBase64!.isNotEmpty) {
-           content.add(Content.multi([TextPart(prompt), DataPart('image/jpeg', base64Decode(currentImageBase64!))]));
-        } else {
-           content.add(Content.text(prompt));
-        }
-        
-        final response = await model.generateContent(content);
-        if (response.text != null) {
-          setModalState(() => descController.text = response.text!.replaceAll(RegExp(r'\*+'), '')); 
-        }
-      } catch (e) {
-        if (context.mounted) {
-          showDialog(
-            context: context, 
-            builder: (ctx) => AlertDialog(
-              title: const Text('Ошибка ИИ', style: TextStyle(color: Colors.red)),
-              content: Text(e.toString()),
-              actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ОК'))],
-            ),
-          );
-        }
-      } finally {
-        setModalState(() => isGeneratingAI = false);
-      }
-    }
-
+    // ИСПРАВЛЕННЫЙ СКАНЕР ШТРИХ-КОДА С ЗАПРОСОМ РАЗРЕШЕНИЯ НА КАМЕРУ
     Future<void> openBarcodeScanner(StateSetter setModalState) async {
-      try {
-        var result = await BarcodeScanner.scan();
-        if (result.type == ResultType.Barcode) {
-          setModalState(() => barcodeController.text = result.rawContent);
+      var status = await Permission.camera.request();
+      if (status.isGranted) {
+        try {
+          var result = await BarcodeScanner.scan();
+          if (result.type == ResultType.Barcode && result.rawContent.isNotEmpty) {
+            setModalState(() => barcodeController.text = result.rawContent);
+          }
+        } catch (e) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка сканирования: $e'), backgroundColor: Colors.red));
+          }
         }
-      } catch (e) {
+      } else {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка сканирования: $e'), backgroundColor: Colors.red));
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Нет доступа к камере! Разрешите в настройках.'), backgroundColor: Colors.red));
         }
       }
     }
@@ -241,18 +192,6 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                         alignLabelWithHint: true,
                         labelStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey[700]), 
                         border: const OutlineInputBorder(),
-                        suffixIcon: Column(
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          children: [
-                            isGeneratingAI 
-                              ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.deepPurpleAccent)))
-                              : IconButton(
-                                  icon: const Icon(Icons.auto_awesome, color: Colors.deepPurpleAccent),
-                                  tooltip: 'Распознать по фото и описать (ИИ)',
-                                  onPressed: () => generateDescriptionWithAI(setModalState),
-                                ),
-                          ],
-                        ),
                       ),
                     ),
                     
@@ -330,19 +269,26 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
     FirebaseFirestore.instance.collection('products').doc(docId).delete();
   }
 
-  // --- НОВОЕ: СКАНЕР ШТРИХКОДА ДЛЯ ПОИСКА ---
+  // --- ИСПРАВЛЕННЫЙ СКАНЕР ДЛЯ ПОИСКА ТОВАРОВ ПО ШТРИХ-КОДУ ---
   Future<void> _scanBarcodeForSearch() async {
-    try {
-      var result = await BarcodeScanner.scan();
-      if (result.type == ResultType.Barcode && result.rawContent.isNotEmpty) {
-        setState(() {
-          _searchController.text = result.rawContent;
-          _searchQuery = result.rawContent.toLowerCase();
-        });
+    var status = await Permission.camera.request();
+    if (status.isGranted) {
+      try {
+        var result = await BarcodeScanner.scan();
+        if (result.type == ResultType.Barcode && result.rawContent.isNotEmpty) {
+          setState(() {
+            _searchController.text = result.rawContent;
+            _searchQuery = result.rawContent.toLowerCase();
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка сканирования: $e'), backgroundColor: Colors.red));
+        }
       }
-    } catch (e) {
+    } else {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка сканирования: $e'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Нет доступа к камере! Разрешите в настройках.'), backgroundColor: Colors.red));
       }
     }
   }
@@ -520,3 +466,4 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
     );
   }
 }
+
