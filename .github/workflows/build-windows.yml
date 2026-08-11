@@ -47,13 +47,19 @@ jobs:
         shell: bash
 
       - name: Build Windows App
-        env:
-          GEMINI_SECRET: ${{ secrets.GEMINI_API_KEY }}
-        run: flutter build windows --release --dart-define="GEMINI_API_KEY=${GEMINI_SECRET}"
+        run: flutter build windows --release
+        shell: bash
+
+      - name: Generate Dynamic Name with Date and Time
+        run: |
+          export TZ="Asia/Ashgabat"
+          BUILD_TIME=$(date +'%d-%m-%Y_%H-%M')
+          ZIP_NAME="MService_CRM_Windows_v1.0.${{ github.run_number }}_${BUILD_TIME}"
+          echo "FINAL_ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
         shell: bash
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: admin-windows-app
+          name: ${{ env.FINAL_ZIP_NAME }}
           path: build/windows/x64/runner/Release/
