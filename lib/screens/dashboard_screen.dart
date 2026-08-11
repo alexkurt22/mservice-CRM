@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 
 import 'users_screen.dart';
 import 'orders_screen.dart';
@@ -88,7 +87,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      FlutterRingtonePlayer().playNotification();
       HapticFeedback.heavyImpact();
     });
   }
@@ -360,4 +358,3 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 }
-
