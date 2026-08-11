@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:google_generative_ai/google_generative_ai.dart';
 
 class AdminNotesScreen extends StatefulWidget {
   const AdminNotesScreen({super.key});
@@ -31,7 +30,7 @@ class _AdminNotesScreenState extends State<AdminNotesScreen> {
     super.dispose();
   }
 
-  // --- ПРОСМОТР СТАТЕЙ (РЕЖИМ ЧТЕНИЯ) ---
+  // --- ПРОСМОТР СТАТЬИ (РЕЖИМ ЧТЕНИЯ) ---
   void _showNoteViewer(String docId, Map<String, dynamic> data) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final title = data['title'] ?? 'Без заголовка';
@@ -268,93 +267,6 @@ class _AdminNotesScreenState extends State<AdminNotesScreen> {
     );
   }
 
-  // --- МАССОВЫЙ ИМПОРТ ИЗ JSON ---
-  void _showMassJSONImportDialog() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textController = TextEditingController();
-    bool isProcessing = false;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            backgroundColor: Theme.of(context).cardColor,
-            title: Row(
-              children: [
-                const Icon(Icons.data_object, color: Colors.blueAccent),
-                const SizedBox(width: 8),
-                Text('Массовый импорт JSON', style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold, fontSize: 16)),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('Вставьте JSON массив. Ожидаемые поля: title, content, category, tags, checklist.', style: TextStyle(fontSize: 12, color: isDark ? Colors.white70 : Colors.blueGrey)),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: textController,
-                  maxLines: 10,
-                  style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 11, fontFamily: 'monospace'),
-                  decoration: InputDecoration(
-                    hintText: '[{"title": "...", "content": "..."}]',
-                    hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.grey),
-                    border: const OutlineInputBorder(),
-                    filled: true,
-                    fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              if (!isProcessing) TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена', style: TextStyle(color: Colors.grey))),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white),
-                onPressed: isProcessing ? null : () async {
-                  if (textController.text.trim().isEmpty) return;
-                  setDialogState(() => isProcessing = true);
-                  
-                  try {
-                    final List<dynamic> parsedList = jsonDecode(textController.text.trim());
-                    final batch = FirebaseFirestore.instance.batch();
-                    final collection = FirebaseFirestore.instance.collection('admin_notes');
-
-                    for (var item in parsedList) {
-                      if (item is Map<String, dynamic>) {
-                        final docRef = collection.doc();
-                        batch.set(docRef, {
-                          'title': item['title'] ?? 'Без заголовка',
-                          'content': item['content'] ?? '',
-                          'category': item['category'] ?? 'Другое',
-                          'tags': item['tags'] ?? [],
-                          'checklist': item['checklist'] ?? [],
-                          'created_at': FieldValue.serverTimestamp(),
-                          'updated_at': FieldValue.serverTimestamp(),
-                        });
-                      }
-                    }
-
-                    await batch.commit();
-
-                    if (mounted) {
-                      Navigator.pop(ctx); 
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Успешно импортировано ${parsedList.length} статей!'), backgroundColor: Colors.green));
-                    }
-                  } catch (e) {
-                    setDialogState(() => isProcessing = false);
-                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка JSON: $e'), backgroundColor: Colors.red));
-                  }
-                },
-                child: isProcessing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('ЗАГРУЗИТЬ'),
-              )
-            ],
-          );
-        }
-      )
-    );
-  }
-
   Future<void> _deleteNote(String docId, String title) async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final confirm = await showDialog<bool>(
@@ -401,25 +313,12 @@ class _AdminNotesScreenState extends State<AdminNotesScreen> {
           )
         ],
       ),
-      floatingActionButton: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          FloatingActionButton(
-            heroTag: 'json_import_btn',
-            onPressed: _showMassJSONImportDialog,
-            backgroundColor: Colors.deepOrangeAccent,
-            child: const Icon(Icons.data_object, color: Colors.white),
-          ),
-          const SizedBox(height: 12),
-          FloatingActionButton.extended(
-            heroTag: 'new_note_btn',
-            onPressed: () => _showNoteEditor(),
-            backgroundColor: Colors.blue[700],
-            icon: const Icon(Icons.add, color: Colors.white),
-            label: const Text('Создать', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-        ],
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'new_note_btn',
+        onPressed: () => _showNoteEditor(),
+        backgroundColor: Colors.blue[700],
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text('Создать', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
       body: Column(
         children: [
