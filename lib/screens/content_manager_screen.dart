@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:convert'; // Нужно для Base64
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
@@ -332,7 +332,6 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                         try {
                           String? imageBase64;
 
-                          // ВРЕМЕННОЕ РЕШЕНИЕ: Читаем файл и конвертируем в Base64 без загрузки в Firebase Storage
                           if (selectedImage != null) {
                             final bytes = await selectedImage!.readAsBytes();
                             imageBase64 = base64Encode(bytes);
@@ -342,9 +341,9 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                             'title': title,
                             'content': content,
                             'type': selectedType,
-                            'image_base64': imageBase64, // Сохраняем как Base64
+                            'image_base64': imageBase64, 
                             'created_at': FieldValue.serverTimestamp(),
-                            'is_active': true,
+                            'is_active': true, // ВАЖНО: При создании явно задаем true
                             'allow_likes': allowLikes,
                             'allow_comments': allowComments,
                             'allow_sharing': allowSharing,
@@ -381,6 +380,22 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
 
   void _deletePost(String docId) {
     FirebaseFirestore.instance.collection('news_feed').doc(docId).delete();
+  }
+
+  // --- ЛОГИКА ТУМБЛЕРА СКРЫТЬ/ПОКАЗАТЬ ---
+  Future<void> _togglePostActiveStatus(String docId, bool currentStatus) async {
+    try {
+      await FirebaseFirestore.instance.collection('news_feed').doc(docId).update({
+        'is_active': !currentStatus
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(!currentStatus ? 'Пост снова виден клиентам' : 'Пост скрыт от клиентов'),
+        backgroundColor: !currentStatus ? Colors.green : Colors.orange,
+        duration: const Duration(seconds: 2),
+      ));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка обновления статуса: $e')));
+    }
   }
 
   @override
@@ -433,11 +448,11 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
               final title = data['title'] ?? 'Без заголовка';
               final content = data['content'] ?? '';
               
-              // Читаем обе версии: и новый base64, и старый URL (если он вдруг был)
               final imageBase64 = data['image_base64'];
               final imageUrl = data['image_url'];
 
-              final isActive = data['is_active'] ?? true;
+              // Читаем статус, если его нет - считаем активным
+              final isActive = data.containsKey('is_active') ? data['is_active'] as bool : true;
               
               final likes = data['likes_count'] ?? 0;
               final shares = data['shares_count'] ?? 0;
@@ -487,7 +502,6 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                       ),
                     ),
 
-                    // Отрисовка Base64 картинки
                     if (imageBase64 != null && imageBase64.toString().isNotEmpty)
                       Image.memory(
                         base64Decode(imageBase64),
@@ -496,7 +510,6 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) => const SizedBox(height: 50, child: Center(child: Text('Ошибка загрузки фото'))),
                       )
-                    // Отрисовка старого URL, если он есть
                     else if (imageUrl != null && imageUrl.toString().isNotEmpty)
                       Image.network(
                         imageUrl,
@@ -551,9 +564,8 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                               Switch(
                                 value: isActive,
                                 activeColor: Colors.green,
-                                onChanged: (val) {
-                                  FirebaseFirestore.instance.collection('news_feed').doc(doc.id).update({'is_active': val});
-                                },
+                                // ВЫЗОВ ИСПРАВЛЕННОЙ ФУНКЦИИ ПЕРЕКЛЮЧЕНИЯ
+                                onChanged: (val) => _togglePostActiveStatus(doc.id, isActive),
                               ),
                               Text(isActive ? 'Активен' : 'Скрыт', style: TextStyle(color: isActive ? Colors.green : Colors.grey, fontWeight: FontWeight.bold, fontSize: 12)),
                             ],
@@ -576,4 +588,3 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
     );
   }
 }
-
