@@ -17,8 +17,9 @@ import 'admin_notes_screen.dart';
 import 'content_manager_screen.dart';
 import 'store_management_screen.dart';
 import 'cash_register_screen.dart'; 
-import 'marketing_screen.dart'; // <--- ИМПОРТ ЭКРАНА РЕКЛАМЫ
+import 'marketing_screen.dart'; 
 import 'login_screen.dart'; 
+import 'company_editor_screen.dart'; // <--- ПОДКЛЮЧЕН ЭКРАН РЕДАКТОРА
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -178,7 +179,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   if (_hasPermission('send_push'))
                     ListTile(leading: Icon(Icons.send_to_mobile, color: isDark ? Colors.white70 : Colors.blueGrey[700]), title: Text('Создать рассылку', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const BulkPushScreen())); }),
                   
-                  // --- НОВАЯ КНОПКА: РЕКЛАМНЫЕ КАМПАНИИ ---
                   ListTile(
                     leading: const Icon(Icons.campaign, color: Colors.blueAccent), 
                     title: Text('Рекламные кампании', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), 
@@ -194,6 +194,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ListTile(leading: Icon(Icons.storefront, color: isDark ? Colors.green[300] : Colors.green[700]), title: Text('Магазин и Склад', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const StoreManagementScreen())); }),
                     
                     ListTile(leading: Icon(Icons.dynamic_feed, color: isDark ? Colors.pink[300] : Colors.pink[600]), title: Text('Контент и Новости', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const ContentManagerScreen())); }),
+                    
+                    // --- НОВАЯ КНОПКА: ИНФО О КОМПАНИИ (О НАС, КОНТАКТЫ, FAQ) ---
+                    ListTile(
+                      leading: const Icon(Icons.business, color: Colors.indigo), 
+                      title: Text('Инфо о компании (FAQ)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), 
+                      onTap: () { 
+                        Navigator.pop(context); 
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => const CompanyEditorScreen())); 
+                      }
+                    ),
+
                     ListTile(leading: Icon(Icons.settings, color: isDark ? Colors.white70 : Colors.blueGrey[700]), title: Text('Настройки', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())); }),
                   ]
                 ],
