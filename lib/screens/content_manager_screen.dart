@@ -343,11 +343,12 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                             'type': selectedType,
                             'image_base64': imageBase64, 
                             'created_at': FieldValue.serverTimestamp(),
-                            'is_active': true, // ВАЖНО: При создании явно задаем true
+                            'is_active': true, 
                             'allow_likes': allowLikes,
                             'allow_comments': allowComments,
                             'allow_sharing': allowSharing,
                             'likes_count': 0,
+                            'comments_count': 0, // <--- ИЗМЕНЕНИЕ: счетчик комментариев со старта 0
                             'liked_by': [],
                             'shares_count': 0,
                             'poll': pollData, 
@@ -382,7 +383,6 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
     FirebaseFirestore.instance.collection('news_feed').doc(docId).delete();
   }
 
-  // --- ЛОГИКА ТУМБЛЕРА СКРЫТЬ/ПОКАЗАТЬ ---
   Future<void> _togglePostActiveStatus(String docId, bool currentStatus) async {
     try {
       await FirebaseFirestore.instance.collection('news_feed').doc(docId).update({
@@ -451,11 +451,12 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
               final imageBase64 = data['image_base64'];
               final imageUrl = data['image_url'];
 
-              // Читаем статус, если его нет - считаем активным
               final isActive = data.containsKey('is_active') ? data['is_active'] as bool : true;
               
               final likes = data['likes_count'] ?? 0;
               final shares = data['shares_count'] ?? 0;
+              final commentsCount = data['comments_count'] ?? 0; // Для админки тоже считываем
+              
               final hasPoll = data['poll'] != null;
               final pollVotes = hasPoll ? (data['poll']['total_votes'] ?? 0) : 0;
               
@@ -547,6 +548,7 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
                           Row(children: [const Icon(Icons.favorite, color: Colors.red, size: 16), const SizedBox(width: 4), Text('$likes', style: const TextStyle(fontWeight: FontWeight.bold))]),
+                          Row(children: [const Icon(Icons.chat_bubble_outline, color: Colors.blue, size: 16), const SizedBox(width: 4), Text('$commentsCount', style: const TextStyle(fontWeight: FontWeight.bold))]),
                           Row(children: [const Icon(Icons.share, color: Colors.green, size: 16), const SizedBox(width: 4), Text('$shares', style: const TextStyle(fontWeight: FontWeight.bold))]),
                           if (hasPoll)
                             Row(children: [const Icon(Icons.poll, color: Colors.deepPurple, size: 16), const SizedBox(width: 4), Text('$pollVotes голосов', style: const TextStyle(fontWeight: FontWeight.bold))]),
@@ -564,7 +566,6 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
                               Switch(
                                 value: isActive,
                                 activeColor: Colors.green,
-                                // ВЫЗОВ ИСПРАВЛЕННОЙ ФУНКЦИИ ПЕРЕКЛЮЧЕНИЯ
                                 onChanged: (val) => _togglePostActiveStatus(doc.id, isActive),
                               ),
                               Text(isActive ? 'Активен' : 'Скрыт', style: TextStyle(color: isActive ? Colors.green : Colors.grey, fontWeight: FontWeight.bold, fontSize: 12)),
@@ -588,3 +589,4 @@ class _ContentManagerScreenState extends State<ContentManagerScreen> {
     );
   }
 }
+
