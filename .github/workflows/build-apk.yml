@@ -49,11 +49,22 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Fix Android SDK versions and kill JNI bug
+      - name: Fix Protobuf Duplicate Classes
         run: |
-          # ВАЖНО: Включаем AndroidX и Jetifier для исправления ошибки CheckDuplicatesRunnable
+          cat << 'EOF' >> android/app/build.gradle.kts
+          
+          configurations.all {
+              exclude(group = "com.google.firebase", module = "protolite-well-known-types")
+          }
+          EOF
+
+      - name: Fix Android SDK versions, MultiDex and kill JNI bug
+        run: |
           echo "android.useAndroidX=true" >> android/gradle.properties
           echo "android.enableJetifier=true" >> android/gradle.properties
+          
+          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 24\n        multiDexEnabled = true/g' android/app/build.gradle.kts 2>/dev/null || true
+          sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 24\n        multiDexEnabled true/g' android/app/build.gradle 2>/dev/null || true
           
           find /home/runner/.pub-cache/hosted -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion 33/compileSdkVersion 36/g' {} +
           find /home/runner/.pub-cache/hosted -name "build.gradle" -type f -exec sed -i 's/compileSdkVersion 34/compileSdkVersion 36/g' {} +
@@ -68,7 +79,6 @@ jobs:
           sed -i 's/targetSdkVersion 33/targetSdkVersion 34/g' android/app/build.gradle 2>/dev/null || true
           sed -i 's/targetSdk = 33/targetSdk = 34/g' android/app/build.gradle.kts 2>/dev/null || true
           
-          # УБИЙЦА БАГА JNI
           find /home/runner/.pub-cache/hosted -path "*/jni-*/android/build.gradle" -exec perl -0777 -pi -e 's/kotlin\s*\{[^}]*\}//g' {} + || true
 
       - name: Inject Secret Keys and Permanent Keystore
